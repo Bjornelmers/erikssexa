@@ -358,12 +358,38 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // Quest Verification
   void _submitQuestPassword() {
-    if (_questPasswordController.text.isEmpty) return;
+    final inputPassword = _questPasswordController.text.trim();
+    if (inputPassword.isEmpty) return;
+
+    // Special master bypass password to reach victory instantly
+    if (inputPassword == "32167") {
+      final oldLevel = _level;
+      setState(() {
+        _questError = "";
+        _questPasswordController.clear();
+      });
+      
+      // Log bypass usage to Firestore
+      try {
+        FirebaseFirestore.instance.collection('quest_logs').add({
+          'timestamp': FieldValue.serverTimestamp(),
+          'quest_title': 'Master Bypass Code Used',
+          'old_level': oldLevel,
+          'new_level': _targetLevel,
+          'password_used': '32167',
+        });
+      } catch (e) {
+        debugPrint("Failed to write bypass log to Firestore: $e");
+      }
+
+      _cheatToVictory();
+      return;
+    }
 
     final currentQuestIndex = _completedQuestsCount.clamp(0, _quests.length - 1);
     final currentQuest = _quests[currentQuestIndex];
 
-    if (currentQuest.checkPassword(_questPasswordController.text)) {
+    if (currentQuest.checkPassword(inputPassword)) {
       final oldLevel = _level;
       final newLevel = _level + currentQuest.rewardLevels;
 
@@ -1283,7 +1309,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             ),
           ),
 
-          // Hidden Reset & Cheat Bypass drawer
+          // Hidden Reset drawer
           Positioned(
             bottom: 12,
             left: 0,
@@ -1319,15 +1345,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       );
                     },
                     child: const Text("RESET QUEST", style: TextStyle(color: Colors.white, fontSize: 10)),
-                  ),
-                ),
-                const SizedBox(width: 20),
-                // Developer Cheat Button
-                Opacity(
-                  opacity: 0.15,
-                  child: TextButton(
-                    onPressed: _cheatToVictory,
-                    child: const Text("DEV BOOST (1337)", style: TextStyle(color: Colors.white, fontSize: 10)),
                   ),
                 ),
               ],
