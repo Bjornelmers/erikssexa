@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:video_player/video_player.dart';
 import 'firebase_options.dart';
 import 'audio_controller.dart';
 import 'custom_particles.dart';
@@ -812,7 +812,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Retro character photo
+                      // Retro character intro video
                       Container(
                         height: 220,
                         width: double.infinity,
@@ -822,13 +822,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(4),
-                          child: Image.asset(
-                            'assets/images/aragnoz_retro.jpg',
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return const Center(child: Icon(Icons.broken_image, size: 48));
-                            },
-                          ),
+                          child: const IntroVideoWidget(),
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -1586,6 +1580,89 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       case AdventureState.grinding:
         return _buildGrindingScreen();
     }
+  }
+}
+
+class IntroVideoWidget extends StatefulWidget {
+  const IntroVideoWidget({super.key});
+
+  @override
+  State<IntroVideoWidget> createState() => _IntroVideoWidgetState();
+}
+
+class _IntroVideoWidgetState extends State<IntroVideoWidget> {
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.asset('assets/videos/aragnoz_intro.mp4')
+      ..initialize().then((_) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+          });
+          _controller.setLooping(true);
+          _controller.setVolume(0.0); // Mute for seamless background playback
+          _controller.play();
+        }
+      }).catchError((error) {
+        debugPrint("Video initialization failed: $error");
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+          });
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasError) {
+      return Image.asset(
+        'assets/images/aragnoz_retro.jpg',
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return const Center(child: Icon(Icons.broken_image, size: 48));
+        },
+      );
+    }
+
+    if (!_isInitialized) {
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          Image.asset(
+            'assets/images/aragnoz_retro.jpg',
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+          ),
+          const CircularProgressIndicator(color: Color(0xFFD4AF37)),
+        ],
+      );
+    }
+
+    return ClipRect(
+      child: SizedBox.expand(
+        child: FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(
+            width: _controller.value.size.width,
+            height: _controller.value.size.height,
+            child: VideoPlayer(_controller),
+          ),
+        ),
+      ),
+    );
   }
 }
 
