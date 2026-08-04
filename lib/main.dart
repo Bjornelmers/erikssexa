@@ -382,6 +382,19 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _saveLevel(newLevel);
       _saveCompletedQuests(_completedQuestsCount);
 
+      // Log successful quest completion to Firestore
+      try {
+        FirebaseFirestore.instance.collection('quest_logs').add({
+          'timestamp': FieldValue.serverTimestamp(),
+          'quest_title': currentQuest.title,
+          'old_level': oldLevel,
+          'new_level': newLevel,
+          'password_used': _questPasswordController.text.trim(),
+        });
+      } catch (e) {
+        debugPrint("Failed to write quest log to Firestore: $e");
+      }
+
       if (oldLevel < _targetLevel && newLevel >= _targetLevel) {
         AudioController.instance.playVictorySound();
       } else {
