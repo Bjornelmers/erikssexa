@@ -566,17 +566,17 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   // 2. LOGIN / VALIDATION VIEW
   Widget _buildLoginScreen() {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0C0E),
+      backgroundColor: const Color(0xFF07080A),
       body: Stack(
         children: [
-          // Stone background
+          // Background atmospheric stone texture
           Positioned.fill(
             child: Container(
               decoration: const BoxDecoration(
                 image: DecorationImage(
                   image: AssetImage('assets/images/daoc_background.jpg'),
                   fit: BoxFit.cover,
-                  opacity: 0.18,
+                  opacity: 0.25,
                 ),
               ),
             ),
@@ -591,153 +591,163 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
           Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               child: Container(
-                constraints: const BoxConstraints(maxWidth: 460),
+                constraints: const BoxConstraints(maxWidth: 440),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF121418).withOpacity(0.92),
+                  color: const Color(0xFF0F1115).withOpacity(0.95),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFD4AF37), width: 1.8),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFFFD700).withOpacity(0.12),
+                      color: const Color(0xFFFFD700).withOpacity(0.15),
                       blurRadius: 24,
                       spreadRadius: 2,
                     ),
                   ],
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(28.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Official DAoC Logo 2 with seamless bottom gradient mask
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: ShaderMask(
-                          shaderCallback: (rect) {
-                            return const LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.black, Colors.black, Colors.transparent],
-                              stops: [0.0, 0.82, 1.0],
-                            ).createShader(rect);
-                          },
-                          blendMode: BlendMode.dstIn,
-                          child: Image.asset(
-                            'assets/images/daoc_logo2.jpg',
-                            height: 250,
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) {
-                              return const Text(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Official DAoC Logo 2 spanning full width with seamless bottom gradient mask
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+                      child: ShaderMask(
+                        shaderCallback: (rect) {
+                          return const LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.black, Colors.black, Colors.transparent],
+                            stops: [0.0, 0.72, 1.0],
+                          ).createShader(rect);
+                        },
+                        blendMode: BlendMode.dstIn,
+                        child: Image.asset(
+                          'assets/images/daoc_logo2.jpg',
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              padding: const EdgeInsets.all(24),
+                              alignment: Alignment.center,
+                              child: const Text(
                                 "DARK AGE OF CAMELOT",
                                 style: TextStyle(
                                   fontFamily: 'Cinzel Decorative',
                                   fontSize: 22,
                                   color: Color(0xFFE5C158),
                                 ),
-                              );
-                            },
-                          ),
+                              ),
+                            );
+                          },
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      
-                      const Text(
-                        "CHARACTER CREDENTIALS",
-                        style: TextStyle(
-                          fontFamily: 'MedievalSharp',
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFFD4AF37),
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
+                    ),
 
-                      // Inputs with icons and leather/gold borders
-                      _loginTextField(_usernameController, "Character Name", Icons.person_outline),
-                      const SizedBox(height: 14),
-                      _loginTextField(_classController, "Class", Icons.shield_outlined),
-                      const SizedBox(height: 14),
-                      _loginTextField(_raceController, "Race", Icons.fort_outlined),
-                      const SizedBox(height: 22),
-
-                      // Error display
-                      if (_loginError.isNotEmpty) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFB71C1C).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0xFFB71C1C), width: 1.2),
-                          ),
-                          child: Text(
-                            _loginError,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Color(0xFFFF8A80),
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
+                    // Form Content padded below the logo
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(28.0, 4.0, 28.0, 28.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            "CHARACTER CREDENTIALS",
+                            style: TextStyle(
                               fontFamily: 'MedievalSharp',
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFD4AF37),
+                              letterSpacing: 1.5,
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                      ],
+                          const SizedBox(height: 18),
 
-                      // Golden sword-hilt styled action button
-                      ElevatedButton(
-                        onPressed: () {
-                          _verifyLogin();
-                          // Ensure music attempts playing on button click
-                          _audioInitialized = true;
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          elevation: 8,
-                          shadowColor: const Color(0xFFFFD700).withOpacity(0.4),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            side: const BorderSide(color: Color(0xFFFFF0A0), width: 1.5),
-                          ),
-                        ),
-                        child: Ink(
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFF3D075), Color(0xFFC59227), Color(0xFF946B00)],
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Container(
-                            height: 52,
-                            alignment: Alignment.center,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.auto_awesome, color: Colors.black87, size: 20),
-                                SizedBox(width: 8),
-                                Text(
-                                  "BEGIN ADVENTURE",
-                                  style: TextStyle(
-                                    color: Colors.black,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.5,
-                                    fontFamily: 'MedievalSharp',
-                                  ),
+                          // Inputs with icons and leather/gold borders
+                          _loginTextField(_usernameController, "Character Name", Icons.person_outline),
+                          const SizedBox(height: 14),
+                          _loginTextField(_classController, "Class", Icons.shield_outlined),
+                          const SizedBox(height: 14),
+                          _loginTextField(_raceController, "Race", Icons.fort_outlined),
+                          const SizedBox(height: 22),
+
+                          // Error display
+                          if (_loginError.isNotEmpty) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFB71C1C).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFB71C1C), width: 1.2),
+                              ),
+                              child: Text(
+                                _loginError,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Color(0xFFFF8A80),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'MedievalSharp',
                                 ),
-                                SizedBox(width: 8),
-                                Icon(Icons.auto_awesome, color: Colors.black87, size: 20),
-                              ],
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+
+                          // Golden sword-hilt styled action button
+                          ElevatedButton(
+                            onPressed: () {
+                              _verifyLogin();
+                              // Ensure music attempts playing on button click
+                              _audioInitialized = true;
+                            },
+                            style: ElevatedButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              elevation: 8,
+                              shadowColor: const Color(0xFFFFD700).withOpacity(0.4),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                side: const BorderSide(color: Color(0xFFFFF0A0), width: 1.5),
+                              ),
+                            ),
+                            child: Ink(
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFFF3D075), Color(0xFFC59227), Color(0xFF946B00)],
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Container(
+                                height: 52,
+                                alignment: Alignment.center,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(Icons.auto_awesome, color: Colors.black87, size: 20),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      "BEGIN ADVENTURE",
+                                      style: TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.5,
+                                        fontFamily: 'MedievalSharp',
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Icon(Icons.auto_awesome, color: Colors.black87, size: 20),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
