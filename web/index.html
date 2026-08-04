@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="erikssexa">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <!-- Google Fonts for Medieval/Norse Style -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Cinzel:wght@500;700;900&family=MedievalSharp&family=Metamorphous&family=Eagle+Lake&display=swap" rel="stylesheet">
+
+  <title>Aragnoz - Shaman Level Counter</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!-- DAoC Web Audio JS Engine -->
+  <script>
+    window.daocAudio = {
+      audioCtx: null,
+      musicOscs: [],
+      musicTimer: null,
+      isMuted: true,
+      customMusic: null,
+
+      ensureCtx: function() {
+        if (!this.audioCtx) {
+          this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (this.audioCtx.state === 'suspended') {
+          this.audioCtx.resume();
+        }
+      },
+
+      toggleMute: function(muteState) {
+        this.isMuted = muteState;
+        this.ensureCtx();
+        if (this.isMuted) {
+          this.stopMusic();
+        } else {
+          this.startMusic();
+        }
+      },
+
+      startMusic: function() {
+        this.stopMusic();
+        if (this.isMuted) return;
+        this.ensureCtx();
+        
+        var self = this;
+        // Attempt custom music
+        var aud = new Audio('assets/audio/ambient_theme.mp3');
+        aud.loop = true;
+        aud.volume = 0.45;
+        
+        aud.addEventListener('error', function() {
+          console.log("No custom ambient_theme.mp3 found. Starting synthesizer fallback.");
+          self.customMusic = null;
+          self.startSynthMusic();
+        });
+
+        aud.play().then(function() {
+          self.customMusic = aud;
+          console.log("Playing custom ambient music loop!");
+        }).catch(function(err) {
+          console.log("Autoplay custom music blocked/failed. Starting synthesizer.");
+          self.customMusic = null;
+          self.startSynthMusic();
+        });
+      },
+
+      stopMusic: function() {
+        if (this.customMusic) {
+          try { this.customMusic.pause(); } catch(e) {}
+          this.customMusic = null;
+        }
+        this.stopSynthMusic();
+      },
+
+      playLevelUp: function() {
+        if (this.isMuted) return;
+        this.ensureCtx();
+        var self = this;
+
+        var aud = new Audio('assets/audio/level_up.mp3');
+        aud.volume = 0.55;
+        aud.addEventListener('error', function() {
+          self.playSynthLevelUp();
+        });
+        aud.play().catch(function() {
+          self.playSynthLevelUp();
+        });
+      },
+
+      playVictory: function() {
+        this.ensureCtx();
+        this.stopMusic();
+        if (this.isMuted) return;
+        var self = this;
+
+        var aud = new Audio('assets/audio/victory_horn.mp3');
+        aud.volume = 0.75;
+        aud.addEventListener('error', function() {
+          self.playSynthVictory();
+        });
+        aud.play().catch(function() {
+          self.playSynthVictory();
+        });
+      },
+
+      // Synthesizer loops
+      playSynthLevelUp: function() {
+        var now = this.audioCtx.currentTime;
+        var notes = [220.0, 261.63, 329.63, 440.0];
+        var self = this;
+        notes.forEach(function(freq, i) {
+          var noteTime = now + (i * 0.08);
+          var osc = self.audioCtx.createOscillator();
+          var gain = self.audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0, noteTime);
+          gain.gain.linearRampToValueAtTime(0.12, noteTime + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, noteTime + 0.3);
+          osc.connect(gain);
+          gain.connect(self.audioCtx.destination);
+          osc.start(noteTime);
+          osc.stop(noteTime + 0.35);
+        });
+      },
+
+      playSynthVictory: function() {
+        var now = this.audioCtx.currentTime;
+        var self = this;
+
+        function swell(freq, start, duration) {
+          var osc1 = self.audioCtx.createOscillator();
+          var osc2 = self.audioCtx.createOscillator();
+          var gain = self.audioCtx.createGain();
+          var filter = self.audioCtx.createBiquadFilter();
+
+          osc1.type = 'sawtooth';
+          osc1.frequency.value = freq;
+          osc2.type = 'sawtooth';
+          osc2.frequency.value = freq + 2.0;
+
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(100, start);
+          filter.frequency.exponentialRampToValueAtTime(1200, start + 0.5);
+          filter.frequency.setValueAtTime(1200, start + duration - 0.5);
+          filter.frequency.linearRampToValueAtTime(200, start + duration);
+
+          gain.gain.setValueAtTime(0, start);
+          gain.gain.linearRampToValueAtTime(0.15, start + 0.6);
+          gain.gain.setValueAtTime(0.15, start + duration - 0.5);
+          gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+          osc1.connect(filter);
+          osc2.connect(filter);
+          filter.connect(gain);
+          gain.connect(self.audioCtx.destination);
+
+          osc1.start(start);
+          osc2.start(start);
+          osc1.stop(start + duration);
+          osc2.stop(start + duration);
+        }
+
+        swell(110.0, now, 2.5);
+        swell(164.81, now + 0.2, 2.3);
+        swell(220.0, now + 0.4, 2.1);
+
+        var fanfare = [440.0, 554.37, 659.25, 880.0];
+        fanfare.forEach(function(freq, i) {
+          var chimeTime = now + 1.2 + (i * 0.15);
+          var osc = self.audioCtx.createOscillator();
+          var gain = self.audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0, chimeTime);
+          gain.gain.linearRampToValueAtTime(0.1, chimeTime + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.0001, chimeTime + 0.8);
+          osc.connect(gain);
+          gain.connect(self.audioCtx.destination);
+          osc.start(chimeTime);
+          osc.stop(chimeTime + 0.9);
+        });
+      },
+
+      startSynthMusic: function() {
+        this.stopSynthMusic();
+        if (this.isMuted) return;
+        this.ensureCtx();
+        var self = this;
+        var beatCount = 0;
+
+        function playPad(freq, start, duration, vol) {
+          var osc = self.audioCtx.createOscillator();
+          var gain = self.audioCtx.createGain();
+          var filter = self.audioCtx.createBiquadFilter();
+
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          filter.type = 'lowpass';
+          filter.frequency.value = 400.0;
+
+          gain.gain.setValueAtTime(0, start);
+          gain.gain.linearRampToValueAtTime(0.08 * vol, start + 1.0);
+          gain.gain.setValueAtTime(0.08 * vol, start + duration - 0.8);
+          gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(self.audioCtx.destination);
+
+          osc.start(start);
+          osc.stop(start + duration);
+          
+          self.musicOscs.push(osc);
+        }
+
+        var runLoop = function() {
+          if (self.isMuted) return;
+          var now = self.audioCtx.currentTime;
+          var root = 110.0;
+          var third = 130.81;
+          var fifth = 164.81;
+
+          var step = beatCount % 4;
+          if (step === 1) {
+            root = 146.83; third = 174.61; fifth = 220.00;
+          } else if (step === 2) {
+            root = 130.81; third = 164.81; fifth = 196.00;
+          } else if (step === 3) {
+            root = 164.81; third = 207.65; fifth = 246.94;
+          }
+
+          playPad(root, now, 3.8, 1.0);
+          playPad(third, now + 0.5, 3.3, 1.0);
+          playPad(fifth, now + 1.0, 2.8, 1.0);
+
+          if (step === 0) playPad(220.00, now + 2.0, 1.8, 0.3);
+          if (step === 1) playPad(293.66, now + 2.0, 1.8, 0.3);
+          if (step === 2) playPad(261.63, now + 2.0, 1.8, 0.3);
+          if (step === 3) playPad(329.63, now + 2.0, 1.8, 0.3);
+
+          beatCount++;
+        };
+
+        runLoop();
+        this.musicTimer = setInterval(runLoop, 4000);
+      },
+
+      stopSynthMusic: function() {
+        if (this.musicTimer) {
+          clearInterval(this.musicTimer);
+          this.musicTimer = null;
+        }
+        this.musicOscs.forEach(function(osc) {
+          try { osc.stop(); } catch(e) {}
+        });
+        this.musicOscs = [];
+      }
+    };
+  </script>
+</head>
+<body>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
