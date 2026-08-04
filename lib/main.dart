@@ -566,17 +566,17 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   // 2. LOGIN / VALIDATION VIEW
   Widget _buildLoginScreen() {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F1115),
+      backgroundColor: const Color(0xFF0A0C0E),
       body: Stack(
         children: [
-          // Background
+          // Stone background
           Positioned.fill(
             child: Container(
               decoration: const BoxDecoration(
                 image: DecorationImage(
                   image: AssetImage('assets/images/daoc_background.jpg'),
                   fit: BoxFit.cover,
-                  opacity: 0.12,
+                  opacity: 0.18,
                 ),
               ),
             ),
@@ -593,13 +593,17 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               child: Container(
-                constraints: const BoxConstraints(maxWidth: 450),
+                constraints: const BoxConstraints(maxWidth: 460),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.85),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFD4AF37), width: 2),
+                  color: const Color(0xFF121418).withOpacity(0.92),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFD4AF37), width: 1.8),
                   boxShadow: [
-                    BoxShadow(color: const Color(0xFFFFD700).withOpacity(0.08), blurRadius: 16)
+                    BoxShadow(
+                      color: const Color(0xFFFFD700).withOpacity(0.12),
+                      blurRadius: 24,
+                      spreadRadius: 2,
+                    ),
                   ],
                 ),
                 child: Padding(
@@ -607,49 +611,64 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Official DAoC Logo
-                      Image.asset(
-                        'assets/images/daoc_logo.jpg',
-                        height: 180,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Text(
-                            "DARK AGE OF CAMELOT",
-                            style: TextStyle(
-                              fontFamily: 'Cinzel Decorative',
-                              fontSize: 22,
-                              color: Color(0xFFE5C158),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      
-                      const Text(
-                        "Character Credentials Required",
-                        style: TextStyle(
-                          fontFamily: 'MedievalSharp',
-                          fontSize: 16,
-                          color: Color(0xFF8B7355),
-                          letterSpacing: 1.0,
+                      // Official DAoC Logo 2 with seamless bottom gradient mask
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: ShaderMask(
+                          shaderCallback: (rect) {
+                            return const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.black, Colors.black, Colors.transparent],
+                              stops: [0.0, 0.82, 1.0],
+                            ).createShader(rect);
+                          },
+                          blendMode: BlendMode.dstIn,
+                          child: Image.asset(
+                            'assets/images/daoc_logo2.jpg',
+                            height: 250,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              return const Text(
+                                "DARK AGE OF CAMELOT",
+                                style: TextStyle(
+                                  fontFamily: 'Cinzel Decorative',
+                                  fontSize: 22,
+                                  color: Color(0xFFE5C158),
+                                ),
+                              );
+                            },
+                          ),
                         ),
                       ),
                       const SizedBox(height: 20),
+                      
+                      const Text(
+                        "CHARACTER CREDENTIALS",
+                        style: TextStyle(
+                          fontFamily: 'MedievalSharp',
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFD4AF37),
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
 
-                      // Inputs
-                      _loginTextField(_usernameController, "Character Name"),
+                      // Inputs with icons and leather/gold borders
+                      _loginTextField(_usernameController, "Character Name", Icons.person_outline),
                       const SizedBox(height: 14),
-                      _loginTextField(_classController, "Class"),
+                      _loginTextField(_classController, "Class", Icons.shield_outlined),
                       const SizedBox(height: 14),
-                      _loginTextField(_raceController, "Race"),
-                      const SizedBox(height: 20),
+                      _loginTextField(_raceController, "Race", Icons.fort_outlined),
+                      const SizedBox(height: 22),
 
                       // Error display
                       if (_loginError.isNotEmpty) ...[
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFB71C1C).withOpacity(0.15),
+                            color: const Color(0xFFB71C1C).withOpacity(0.2),
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(color: const Color(0xFFB71C1C), width: 1.2),
                           ),
@@ -658,7 +677,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: Color(0xFFFF8A80),
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: FontWeight.bold,
                               fontFamily: 'MedievalSharp',
                             ),
@@ -667,7 +686,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         const SizedBox(height: 20),
                       ],
 
-                      // Submit button
+                      // Golden sword-hilt styled action button
                       ElevatedButton(
                         onPressed: () {
                           _verifyLogin();
@@ -676,29 +695,43 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         },
                         style: ElevatedButton.styleFrom(
                           padding: EdgeInsets.zero,
+                          elevation: 8,
+                          shadowColor: const Color(0xFFFFD700).withOpacity(0.4),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(6),
-                            side: const BorderSide(color: Color(0xFFD4AF37), width: 1.5),
+                            borderRadius: BorderRadius.circular(8),
+                            side: const BorderSide(color: Color(0xFFFFF0A0), width: 1.5),
                           ),
                         ),
                         child: Ink(
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [Color(0xFFE5C158), Color(0xFFB8860B)],
+                              colors: [Color(0xFFF3D075), Color(0xFFC59227), Color(0xFF946B00)],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
                             ),
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Container(
-                            height: 48,
+                            height: 52,
                             alignment: Alignment.center,
-                            child: const Text(
-                              "BEGIN ADVENTURE",
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1.0,
-                              ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: const [
+                                Icon(Icons.auto_awesome, color: Colors.black87, size: 20),
+                                SizedBox(width: 8),
+                                Text(
+                                  "BEGIN ADVENTURE",
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.5,
+                                    fontFamily: 'MedievalSharp',
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Icon(Icons.auto_awesome, color: Colors.black87, size: 20),
+                              ],
                             ),
                           ),
                         ),
@@ -714,22 +747,30 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
-  Widget _loginTextField(TextEditingController controller, String hint) {
+  Widget _loginTextField(TextEditingController controller, String hint, IconData icon) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.black,
+        color: const Color(0xFF0B0D10),
         border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.5),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: TextField(
         controller: controller,
         textAlign: TextAlign.center,
-        style: const TextStyle(color: Colors.white, fontSize: 14),
+        style: const TextStyle(color: Colors.white, fontSize: 14, fontFamily: 'MedievalSharp'),
         decoration: InputDecoration(
+          prefixIcon: Icon(icon, color: const Color(0xFFD4AF37), size: 20),
           hintText: hint,
-          hintStyle: TextStyle(color: Colors.grey.withOpacity(0.7), fontSize: 13),
+          hintStyle: TextStyle(color: Colors.grey.withOpacity(0.7), fontSize: 13, fontFamily: 'MedievalSharp'),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
         ),
       ),
     );
