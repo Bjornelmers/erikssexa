@@ -71,24 +71,50 @@
         this.ensureCtx();
         
         var self = this;
-        // Attempt custom music
-        var aud = new Audio('assets/audio/ambient_theme.mp3');
+        var primaryPath = 'assets/assets/audio/ambient_theme.mp3';
+        var secondaryPath = 'assets/audio/ambient_theme.mp3';
+        
+        var aud = new Audio(primaryPath);
         aud.loop = true;
         aud.volume = 0.45;
         
+        function tryFallback() {
+          console.log("Failed to load " + primaryPath + ". Trying fallback path: " + secondaryPath);
+          var fallbackAud = new Audio(secondaryPath);
+          fallbackAud.loop = true;
+          fallbackAud.volume = 0.45;
+          
+          fallbackAud.addEventListener('error', function() {
+            console.log("No custom ambient_theme.mp3 found at either path. Starting synthesizer fallback.");
+            self.customMusic = null;
+            self.startSynthMusic();
+          });
+          
+          fallbackAud.play().then(function() {
+            self.customMusic = fallbackAud;
+            console.log("Playing custom ambient music loop from fallback path!");
+          }).catch(function(err) {
+            console.log("Autoplay blocked or load failed for fallback path. Starting synthesizer.");
+            self.customMusic = null;
+            self.startSynthMusic();
+          });
+        }
+        
         aud.addEventListener('error', function() {
-          console.log("No custom ambient_theme.mp3 found. Starting synthesizer fallback.");
-          self.customMusic = null;
-          self.startSynthMusic();
+          tryFallback();
         });
-
+        
         aud.play().then(function() {
           self.customMusic = aud;
-          console.log("Playing custom ambient music loop!");
+          console.log("Playing custom ambient music loop from primary path!");
         }).catch(function(err) {
-          console.log("Autoplay custom music blocked/failed. Starting synthesizer.");
-          self.customMusic = null;
-          self.startSynthMusic();
+          if (aud.error) {
+            tryFallback();
+          } else {
+            console.log("Autoplay custom music blocked/failed. Starting synthesizer.");
+            self.customMusic = null;
+            self.startSynthMusic();
+          }
         });
       },
 
@@ -105,13 +131,32 @@
         this.ensureCtx();
         var self = this;
 
-        var aud = new Audio('assets/audio/level_up.mp3');
+        var primaryPath = 'assets/assets/audio/level_up.mp3';
+        var secondaryPath = 'assets/audio/level_up.mp3';
+        
+        var aud = new Audio(primaryPath);
         aud.volume = 0.55;
+        
+        function tryFallback() {
+          var fallbackAud = new Audio(secondaryPath);
+          fallbackAud.volume = 0.55;
+          fallbackAud.addEventListener('error', function() {
+            self.playSynthLevelUp();
+          });
+          fallbackAud.play().catch(function() {
+            self.playSynthLevelUp();
+          });
+        }
+
         aud.addEventListener('error', function() {
-          self.playSynthLevelUp();
+          tryFallback();
         });
         aud.play().catch(function() {
-          self.playSynthLevelUp();
+          if (aud.error) {
+            tryFallback();
+          } else {
+            self.playSynthLevelUp();
+          }
         });
       },
 
@@ -121,13 +166,32 @@
         if (this.isMuted) return;
         var self = this;
 
-        var aud = new Audio('assets/audio/victory_horn.mp3');
+        var primaryPath = 'assets/assets/audio/victory_horn.mp3';
+        var secondaryPath = 'assets/audio/victory_horn.mp3';
+        
+        var aud = new Audio(primaryPath);
         aud.volume = 0.75;
+        
+        function tryFallback() {
+          var fallbackAud = new Audio(secondaryPath);
+          fallbackAud.volume = 0.75;
+          fallbackAud.addEventListener('error', function() {
+            self.playSynthVictory();
+          });
+          fallbackAud.play().catch(function() {
+            self.playSynthVictory();
+          });
+        }
+
         aud.addEventListener('error', function() {
-          self.playSynthVictory();
+          tryFallback();
         });
         aud.play().catch(function() {
-          self.playSynthVictory();
+          if (aud.error) {
+            tryFallback();
+          } else {
+            self.playSynthVictory();
+          }
         });
       },
 
