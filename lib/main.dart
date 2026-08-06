@@ -133,6 +133,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   ];
 
   final TextEditingController _questPasswordController = TextEditingController();
+  final TextEditingController _potionPasswordController = TextEditingController();
   String _questError = "";
 
   @override
@@ -150,6 +151,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _classController.dispose();
     _raceController.dispose();
     _questPasswordController.dispose();
+    _potionPasswordController.dispose();
     _inputFocusNode.dispose();
     _levelInputController.dispose();
     super.dispose();
@@ -364,6 +366,180 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     });
     _saveLevel(_targetLevel);
     AudioController.instance.playVictorySound();
+  }
+
+  void _showDrinkPotionDialog() {
+    String dialogError = "";
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E2125),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Color(0xFFD4AF37), width: 1.8),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFFFD700), width: 1.8),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: Image.asset(
+                        'assets/images/potion.jpg',
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.science, color: Color(0xFFFFD700), size: 22),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      "Drink Potion (10 levels)",
+                      style: TextStyle(
+                        color: Color(0xFFE5C158),
+                        fontFamily: 'MedievalSharp',
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Ange 'Potion secret message' för att dricka potionen och få +10 levlar:",
+                    style: TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'MedievalSharp'),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: TextField(
+                      controller: _potionPasswordController,
+                      style: const TextStyle(
+                        color: Color(0xFFE5C158),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        fontFamily: 'MedievalSharp',
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: "Potion secret message...",
+                        hintStyle: TextStyle(color: Colors.grey, fontSize: 12, fontFamily: 'MedievalSharp'),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                    ),
+                  ),
+                  if (dialogError.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      dialogError,
+                      style: const TextStyle(
+                        color: Color(0xFFFF8A80),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'MedievalSharp',
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    _potionPasswordController.clear();
+                    Navigator.pop(context);
+                  },
+                  child: const Text("Avbryt", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE5C158),
+                    foregroundColor: Colors.black,
+                  ),
+                  onPressed: () {
+                    final rawInput = _potionPasswordController.text.trim();
+                    final input = rawInput.toLowerCase();
+                    
+                    bool isValid = false;
+                    if (input == 'potion secret message' ||
+                        input == 'potion secret message!' ||
+                        input == 'potion secret message.' ||
+                        input == 'potion of level up !' ||
+                        input == 'potion of level up!' ||
+                        input == 'potion of level up' ||
+                        input == '32167') {
+                      isValid = true;
+                    }
+
+                    if (isValid) {
+                      final oldLevel = _level;
+                      final newLevel = _level + 10;
+                      setState(() {
+                        _level = newLevel;
+                      });
+                      _saveLevel(newLevel);
+                      
+                      // Log potion drink to Firestore
+                      try {
+                        FirebaseFirestore.instance.collection('quest_logs').add({
+                          'timestamp': FieldValue.serverTimestamp(),
+                          'quest_title': 'Magic Potion Consumed (+10 levels)',
+                          'old_level': oldLevel,
+                          'new_level': newLevel,
+                          'password_used': rawInput,
+                        });
+                      } catch (e) {
+                        debugPrint("Failed to write potion log to Firestore: $e");
+                      }
+
+                      _potionPasswordController.clear();
+                      Navigator.pop(context);
+
+                      if (oldLevel < _targetLevel && newLevel >= _targetLevel) {
+                        AudioController.instance.playVictorySound();
+                      } else {
+                        AudioController.instance.playLevelUpSound();
+                      }
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          backgroundColor: Color(0xFF2E7D32),
+                          content: Text(
+                            "Slurp! Du drack potionen och fick +10 levlar!",
+                            style: TextStyle(fontFamily: 'MedievalSharp', color: Colors.white),
+                          ),
+                        ),
+                      );
+                    } else {
+                      setDialogState(() {
+                        dialogError = "Fel hemligt meddelande! Potionen har ingen effekt.";
+                      });
+                    }
+                  },
+                  child: const Text("DRINK!", style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _resetCharacter() {
@@ -1217,6 +1393,102 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                 ),
                               ),
                             ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // POTION DRINK CONTAINER
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF2C2214), Color(0xFF16110A)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFE5C158), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                              blurRadius: 10,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFFFFD700), width: 2),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.amber.withValues(alpha: 0.3),
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(26),
+                                child: Image.asset(
+                                  'assets/images/potion.jpg',
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const Icon(Icons.science, color: Color(0xFFFFD700), size: 26),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "MAGIC POTION",
+                                    style: TextStyle(
+                                      fontFamily: 'MedievalSharp',
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFFE5C158),
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    "+10 levels per potion bottle!",
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: _showDrinkPotionDialog,
+                              icon: const Icon(Icons.local_drink, size: 16, color: Colors.black),
+                              label: const Text(
+                                "Drink potion (10 levels)",
+                                style: TextStyle(
+                                  fontFamily: 'MedievalSharp',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFFFD700),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
