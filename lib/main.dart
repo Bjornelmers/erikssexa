@@ -2305,52 +2305,43 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           ),
                         ),
                       ],
+                      // Reset Button (at the very bottom after scrolling)
+                      const SizedBox(height: 24),
+                      Center(
+                        child: Opacity(
+                          opacity: 0.35,
+                          child: TextButton(
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) {
+                                  return AlertDialog(
+                                    backgroundColor: const Color(0xFF1E2125),
+                                    title: const Text("Restart Quest?", style: TextStyle(color: Color(0xFFE5C158), fontFamily: 'MedievalSharp')),
+                                    content: const Text("Reset character? This goes back to countdown screen."),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD32F2F)),
+                                        onPressed: () {
+                                          Navigator.pop(context);
+                                          _resetCharacter();
+                                        },
+                                        child: const Text("Reset", style: TextStyle(color: Colors.white)),
+                                      )
+                                    ],
+                                  );
+                                },
+                              );
+                            },
+                            child: const Text("RESET QUEST", style: TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 1.0)),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
-            ),
-          ),
-
-          // Hidden Reset drawer
-          Positioned(
-            bottom: 12,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Reset Button
-                Opacity(
-                  opacity: 0.25,
-                  child: TextButton(
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) {
-                          return AlertDialog(
-                            backgroundColor: const Color(0xFF1E2125),
-                            title: const Text("Restart Quest?", style: TextStyle(color: Color(0xFFE5C158), fontFamily: 'MedievalSharp')),
-                            content: const Text("Reset character? This goes back to countdown screen."),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD32F2F)),
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  _resetCharacter();
-                                },
-                                child: const Text("Reset", style: TextStyle(color: Colors.white)),
-                              )
-                            ],
-                          );
-                        },
-                      );
-                    },
-                    child: const Text("RESET QUEST", style: TextStyle(color: Colors.white, fontSize: 10)),
-                  ),
-                ),
-              ],
             ),
           ),
 
