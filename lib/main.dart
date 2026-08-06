@@ -827,7 +827,35 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     "Ange 'Potion secret message' för att dricka potionen och få +10 levlar:",
                     style: TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'MedievalSharp'),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 8),
+                  // Autofill secret message button for testers
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () {
+                        setDialogState(() {
+                          _potionPasswordController.text = _potionSecrets.isNotEmpty
+                              ? _potionSecrets.first.secret
+                              : "Potion secret message";
+                        });
+                      },
+                      icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
+                      label: const Text(
+                        "Autofill secret message (tillfällig knapp för testare)",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFFE5C158),
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.black,
