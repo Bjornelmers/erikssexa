@@ -45,17 +45,43 @@ class DAoCLevelCounterApp extends StatelessWidget {
 }
 
 class QuestInfo {
+  final String id;
   final String title;
   final String password; // Exact lowercase check (or custom checker)
   final int rewardLevels;
   final String hint;
+  final int order;
 
   QuestInfo({
+    this.id = '',
     required this.title,
     required this.password,
     required this.rewardLevels,
     required this.hint,
+    this.order = 0,
   });
+
+  factory QuestInfo.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return QuestInfo(
+      id: doc.id,
+      title: data['title'] as String? ?? '',
+      password: data['password'] as String? ?? '',
+      rewardLevels: (data['rewardLevels'] ?? data['reward_levels'] as num?)?.toInt() ?? 10,
+      hint: data['hint'] as String? ?? '',
+      order: (data['order'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'password': password,
+      'rewardLevels': rewardLevels,
+      'hint': hint,
+      'order': order,
+    };
+  }
 
   bool checkPassword(String input) {
     final cleanInput = input.trim().toLowerCase();
@@ -84,6 +110,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   bool _isLoading = true;
   bool _audioInitialized = false;
   StreamSubscription? _stateSubscription;
+  StreamSubscription? _questsSubscription;
 
   // Countdown target: August 15, 2026, 09:00 AM
   final DateTime _targetDate = DateTime(2026, 8, 15, 9, 0);
@@ -99,38 +126,53 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // Quest grind data
   int _completedQuestsCount = 0;
-  final List<QuestInfo> _quests = [
+
+  // Default fallback quests
+  static final List<QuestInfo> _defaultQuests = [
     QuestInfo(
+      id: "quest_1",
       title: "Get dressed!",
       password: "svensexa!",
       rewardLevels: 10,
       hint: "Quest Code: Svensexa!",
+      order: 1,
     ),
     QuestInfo(
+      id: "quest_2",
       title: "Drink a Viking Mead!",
       password: "skål!",
       rewardLevels: 100,
       hint: "What do Vikings say when raising a cup? (skål! / skal!)",
+      order: 2,
     ),
     QuestInfo(
+      id: "quest_3",
       title: "Defeat the Celtic dragon!",
       password: "excalibur",
       rewardLevels: 100,
       hint: "The legendary sword of King Arthur",
+      order: 3,
     ),
     QuestInfo(
+      id: "quest_4",
       title: "Gather the Groomsmen!",
       password: "fellowship",
       rewardLevels: 100,
       hint: "The first book in the Lord of the Rings trilogy: 'The ... of the Ring'",
+      order: 4,
     ),
     QuestInfo(
+      id: "quest_5",
       title: "Patrol the Midgard Border",
       password: "odin",
       rewardLevels: 100,
       hint: "The Allfather of Norse mythology (Repeatable Quest!)",
+      order: 5,
     ),
   ];
+
+  // Active quest list dynamically populated from Firestore
+  late List<QuestInfo> _quests = List.from(_defaultQuests);
 
   final TextEditingController _questPasswordController = TextEditingController();
   final TextEditingController _potionPasswordController = TextEditingController();
@@ -141,12 +183,14 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     super.initState();
     _loadState();
     _initCountdown();
+    _listenToQuests();
   }
 
   @override
   void dispose() {
     _countdownTimer?.cancel();
     _stateSubscription?.cancel();
+    _questsSubscription?.cancel();
     _usernameController.dispose();
     _classController.dispose();
     _raceController.dispose();
@@ -155,6 +199,39 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _inputFocusNode.dispose();
     _levelInputController.dispose();
     super.dispose();
+  }
+
+  // Listen to quests from Firestore database
+  void _listenToQuests() {
+    final questsRef = FirebaseFirestore.instance.collection('quests');
+    
+    _questsSubscription = questsRef.orderBy('order').snapshots().listen((snapshot) async {
+      if (snapshot.docs.isEmpty) {
+        // Seed default quests into Firestore if empty
+        debugPrint("Firestore 'quests' collection is empty. Seeding default quests...");
+        final batch = FirebaseFirestore.instance.batch();
+        for (final q in _defaultQuests) {
+          final docRef = questsRef.doc(q.id);
+          batch.set(docRef, q.toMap());
+        }
+        await batch.commit().catchError((e) {
+          debugPrint("Failed to seed default quests: $e");
+        });
+        return;
+      }
+      
+      final loadedQuests = snapshot.docs
+          .map((doc) => QuestInfo.fromFirestore(doc))
+          .toList();
+          
+      if (mounted && loadedQuests.isNotEmpty) {
+        setState(() {
+          _quests = loadedQuests;
+        });
+      }
+    }, onError: (error) {
+      debugPrint("Error listening to Firestore quests, using defaults: $error");
+    });
   }
 
   // Focus and dummy node to prevent compilation warnings
