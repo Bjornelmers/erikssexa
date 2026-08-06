@@ -2942,13 +2942,14 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       child: Scaffold(
         backgroundColor: const Color(0xFF0F1115),
         appBar: AppBar(
+          toolbarHeight: 44,
           backgroundColor: const Color(0xFF1E2125),
           iconTheme: const IconThemeData(color: Color(0xFFE5C158)),
           title: const Text(
             "⚙️ ADMINPANEL",
             style: TextStyle(
               fontFamily: 'Cinzel Decorative',
-              fontSize: 16,
+              fontSize: 14,
               color: Color(0xFFE5C158),
               fontWeight: FontWeight.bold,
             ),
@@ -2957,28 +2958,31 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             indicatorColor: Color(0xFFFFD700),
             labelColor: Color(0xFFFFD700),
             unselectedLabelColor: Colors.grey,
+            labelStyle: TextStyle(fontSize: 11, fontFamily: 'MedievalSharp'),
             tabs: [
-              Tab(icon: Icon(Icons.assignment), text: "Uppdrag"),
-              Tab(icon: Icon(Icons.science), text: "Potions"),
+              Tab(icon: Icon(Icons.assignment, size: 16), text: "Uppdrag"),
+              Tab(icon: Icon(Icons.science, size: 16), text: "Potions"),
             ],
           ),
           actions: [
             Padding(
-              padding: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.only(right: 8),
               child: ElevatedButton.icon(
                 onPressed: () {
                   setState(() {
                     _state = AdventureState.grinding;
                   });
                 },
-                icon: const Icon(Icons.visibility, size: 16, color: Colors.black),
+                icon: const Icon(Icons.visibility, size: 14, color: Colors.black),
                 label: const Text(
                   "TILLBAKA TILL ARAGNOZ",
-                  style: TextStyle(fontFamily: 'MedievalSharp', fontSize: 11, color: Colors.black, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontFamily: 'MedievalSharp', fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFE5C158),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ),
             ),
@@ -2989,32 +2993,32 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             children: [
               // Max Level Summary Card at top of Admin View
               Container(
-                margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                margin: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [Color(0xFF2C2214), Color(0xFF16110A)],
                   ),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFFFD700), width: 1.5),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFFD700), width: 1.2),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFFFD700).withValues(alpha: 0.15),
-                      blurRadius: 8,
+                      color: const Color(0xFFFFD700).withValues(alpha: 0.12),
+                      blurRadius: 6,
                     ),
                   ],
                 ),
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(5),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFD700).withValues(alpha: 0.2),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.star_rounded, color: Color(0xFFFFD700), size: 28),
+                      child: const Icon(Icons.star_rounded, color: Color(0xFFFFD700), size: 20),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3023,30 +3027,30 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             "MAX LEVEL (UPPDRAG + 10 ST POTIONS):",
                             style: TextStyle(
                               fontFamily: 'MedievalSharp',
-                              fontSize: 11,
+                              fontSize: 10,
                               color: Colors.grey,
-                              letterSpacing: 0.8,
+                              letterSpacing: 0.5,
                             ),
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 1),
                           Row(
                             children: [
                               Text(
                                 "Level $maxAchievableLevel",
                                 style: const TextStyle(
                                   fontFamily: 'Cinzel Decorative',
-                                  fontSize: 20,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   color: Color(0xFFFFD700),
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
                                   "(Start 50 + $totalQuestLevels Lvl uppdrag + $totalPotionLevels Lvl från 10 st potions)",
                                   style: const TextStyle(
                                     fontFamily: 'MedievalSharp',
-                                    fontSize: 11,
+                                    fontSize: 10,
                                     color: Color(0xFF81C784),
                                   ),
                                 ),
@@ -3058,7 +3062,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     ),
                     if (maxAchievableLevel >= 1337)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: const Color(0xFF4CAF50).withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(4),
@@ -3066,7 +3070,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         ),
                         child: const Text(
                           "GOAL REACHED! (≥1337)",
-                          style: TextStyle(color: Color(0xFF81C784), fontSize: 10, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Color(0xFF81C784), fontSize: 9, fontWeight: FontWeight.bold),
                         ),
                       ),
                   ],
@@ -3080,21 +3084,24 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     Column(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           color: Colors.black45,
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
                                 "Totalt ${_quests.length} uppdrag i databasen",
-                                style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'MedievalSharp'),
+                                style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'MedievalSharp'),
                               ),
                               ElevatedButton.icon(
                                 onPressed: () => _showQuestDialog(),
-                                icon: const Icon(Icons.add, size: 18, color: Colors.black),
-                                label: const Text("Nytt Uppdrag", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
+                                icon: const Icon(Icons.add, size: 14, color: Colors.black),
+                                label: const Text("Nytt Uppdrag", style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF4CAF50),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 ),
                               ),
                             ],
@@ -3239,21 +3246,24 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     Column(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           color: Colors.black45,
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
                                 "Totalt ${_potionSecrets.length} potion-koder i databasen",
-                                style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'MedievalSharp'),
+                                style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'MedievalSharp'),
                               ),
                               ElevatedButton.icon(
                                 onPressed: () => _showPotionDialog(),
-                                icon: const Icon(Icons.add, size: 18, color: Colors.black),
-                                label: const Text("Ny Potion", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
+                                icon: const Icon(Icons.add, size: 14, color: Colors.black),
+                                label: const Text("Ny Potion", style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF4CAF50),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 ),
                               ),
                             ],
