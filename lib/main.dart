@@ -44,6 +44,53 @@ class DAoCLevelCounterApp extends StatelessWidget {
   }
 }
 
+class SubQuestInfo {
+  final String id;
+  final String title;
+  final String password;
+  final String description;
+  final int rewardLevels;
+
+  SubQuestInfo({
+    this.id = '',
+    required this.title,
+    required this.password,
+    this.description = '',
+    this.rewardLevels = 0,
+  });
+
+  factory SubQuestInfo.fromMap(Map<String, dynamic> map, [int index = 0]) {
+    return SubQuestInfo(
+      id: map['id'] as String? ?? 'sub_$index',
+      title: map['title'] as String? ?? '',
+      password: map['password'] as String? ?? '',
+      description: map['description'] as String? ?? map['hint'] as String? ?? '',
+      rewardLevels: (map['rewardLevels'] ?? map['reward_levels'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'title': title,
+      'password': password,
+      'description': description,
+      'rewardLevels': rewardLevels,
+    };
+  }
+
+  bool checkPassword(String input) {
+    final cleanInput = input.trim().toLowerCase();
+    final cleanPassword = password.toLowerCase();
+    
+    if (cleanPassword.contains('skål')) {
+      return cleanInput == 'skål!' || cleanInput == 'skal!' || cleanInput == 'skål' || cleanInput == 'skal';
+    }
+    
+    return cleanInput == cleanPassword;
+  }
+}
+
 class QuestInfo {
   final String id;
   final String title;
@@ -51,6 +98,7 @@ class QuestInfo {
   final int rewardLevels;
   final String description;
   final int order;
+  final List<SubQuestInfo> subquests;
 
   QuestInfo({
     this.id = '',
@@ -59,10 +107,24 @@ class QuestInfo {
     required this.rewardLevels,
     required this.description,
     this.order = 0,
+    this.subquests = const [],
   });
+
+  bool get hasSubquests => subquests.isNotEmpty;
 
   factory QuestInfo.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
+
+    List<SubQuestInfo> subList = [];
+    if (data['subquests'] != null && data['subquests'] is List) {
+      final rawList = data['subquests'] as List;
+      for (int i = 0; i < rawList.length; i++) {
+        if (rawList[i] is Map) {
+          subList.add(SubQuestInfo.fromMap(rawList[i] as Map<String, dynamic>, i));
+        }
+      }
+    }
+
     return QuestInfo(
       id: doc.id,
       title: data['title'] as String? ?? '',
@@ -70,6 +132,7 @@ class QuestInfo {
       rewardLevels: (data['rewardLevels'] ?? data['reward_levels'] as num?)?.toInt() ?? 10,
       description: data['description'] as String? ?? '',
       order: (data['order'] as num?)?.toInt() ?? 0,
+      subquests: subList,
     );
   }
 
@@ -80,6 +143,7 @@ class QuestInfo {
       'rewardLevels': rewardLevels,
       'description': description,
       'order': order,
+      'subquests': subquests.map((s) => s.toMap()).toList(),
     };
   }
 
@@ -169,6 +233,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // Quest grind data
   int _completedQuestsCount = 0;
+  Set<String> _completedSubQuestKeys = {};
+  final Map<String, TextEditingController> _subQuestControllers = {};
+
+  TextEditingController _getSubQuestController(String key) {
+    return _subQuestControllers.putIfAbsent(key, () => TextEditingController());
+  }
 
   // Default fallback quests
   static final List<QuestInfo> _defaultQuests = [
@@ -252,6 +322,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _potionPasswordController.dispose();
     _inputFocusNode.dispose();
     _levelInputController.dispose();
+    for (final c in _subQuestControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -394,6 +467,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final level = prefs.getInt('aragnoz_level') ?? 50;
     final savedStateIndex = prefs.getInt('adventure_state') ?? AdventureState.countdown.index;
     final completedQuests = prefs.getInt('completed_quests_count') ?? 0;
+    final completedSubQuestsList = prefs.getStringList('completed_subquests') ?? [];
     
     AdventureState savedState = AdventureState.values[savedStateIndex];
 
@@ -408,6 +482,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         _level = level;
         _state = savedState;
         _completedQuestsCount = completedQuests;
+        _completedSubQuestKeys = completedSubQuestsList.toSet();
         _isLoading = false;
       });
     }
@@ -441,6 +516,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     // Save completed quests count locally per device
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('completed_quests_count', count);
+  }
+
+  Future<void> _saveCompletedSubQuests() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('completed_subquests', _completedSubQuestKeys.toList());
   }
 
   // Secrets & Bypass
@@ -554,6 +634,70 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     } else {
       setState(() {
         _questError = "Fel lösenord, din tröge trollskalle! Försök igen.";
+      });
+    }
+  }
+
+  void _submitSubQuestPassword(QuestInfo quest, SubQuestInfo sub) {
+    final subKey = "${quest.id}_${sub.id}";
+    final controller = _getSubQuestController(subKey);
+    final inputPassword = controller.text.trim();
+    if (inputPassword.isEmpty) return;
+
+    if (sub.checkPassword(inputPassword) || inputPassword == "32167") {
+      final oldLevel = _level;
+      final newLevel = _level + sub.rewardLevels;
+
+      setState(() {
+        _completedSubQuestKeys.add(subKey);
+        _level = newLevel;
+        _questError = "";
+        controller.clear();
+
+        // Check if all subquests of this quest are completed
+        bool allSubquestsDone = true;
+        for (final sq in quest.subquests) {
+          if (!_completedSubQuestKeys.contains("${quest.id}_${sq.id}")) {
+            allSubquestsDone = false;
+            break;
+          }
+        }
+
+        if (allSubquestsDone) {
+          if (quest.rewardLevels > 0) {
+            _level += quest.rewardLevels;
+          }
+          if (_completedQuestsCount < _quests.length - 1) {
+            _completedQuestsCount++;
+          }
+        }
+      });
+
+      _saveLevel(_level);
+      _saveCompletedQuests(_completedQuestsCount);
+      _saveCompletedSubQuests();
+
+      // Log subquest completion to Firestore
+      try {
+        FirebaseFirestore.instance.collection('quest_logs').add({
+          'timestamp': FieldValue.serverTimestamp(),
+          'quest_title': "${quest.title} - ${sub.title}",
+          'old_level': oldLevel,
+          'new_level': _level,
+          'password_used': inputPassword,
+        });
+      } catch (e) {
+        debugPrint("Failed to write subquest log to Firestore: $e");
+      }
+
+      if (oldLevel < _targetLevel && _level >= _targetLevel) {
+        AudioController.instance.playVictorySound();
+      } else {
+        AudioController.instance.playLevelUpSound();
+      }
+    } else {
+      setState(() {
+        _questError = "Fel lösenord för delmålet! Försök igen.";
       });
     }
   }
@@ -748,16 +892,21 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _state = AdventureState.countdown;
       _bypassClicks = 0;
       _completedQuestsCount = 0;
+      _completedSubQuestKeys.clear();
       _usernameController.clear();
       _classController.clear();
       _raceController.clear();
       _questPasswordController.clear();
       _loginError = "";
       _questError = "";
+      for (final c in _subQuestControllers.values) {
+        c.clear();
+      }
       _initCountdown();
     });
     _saveLevel(50);
     _saveCompletedQuests(0);
+    _saveCompletedSubQuests();
     _saveAdventureState(AdventureState.countdown);
     AudioController.instance.toggleMute(); // Reset audio toggle
   }
@@ -1207,6 +1356,195 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
+  Widget _buildSubquestsList(QuestInfo quest) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 14),
+        const Text(
+          "SUB-QUESTS / DELMÅL",
+          style: TextStyle(
+            fontFamily: 'MedievalSharp',
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFFD4AF37),
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: quest.subquests.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final sub = quest.subquests[index];
+            final subKey = "${quest.id}_${sub.id}";
+            final isDone = _completedSubQuestKeys.contains(subKey);
+
+            return Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDone
+                    ? const Color(0xFF1B2E1D).withValues(alpha: 0.6)
+                    : const Color(0xFF0F1115).withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: isDone ? const Color(0xFF4CAF50) : const Color(0xFF8B7355),
+                  width: 1.2,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          "${index + 1}. ${sub.title}",
+                          style: TextStyle(
+                            fontFamily: 'MedievalSharp',
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: isDone ? const Color(0xFF81C784) : Colors.white,
+                            decoration: isDone ? TextDecoration.lineThrough : null,
+                          ),
+                        ),
+                      ),
+                      if (sub.rewardLevels > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD4AF37).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: const Color(0xFFD4AF37), width: 0.8),
+                          ),
+                          child: Text(
+                            "+${sub.rewardLevels} Lvl",
+                            style: const TextStyle(
+                              color: Color(0xFFFFD700),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (sub.description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      sub.description,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDone ? Colors.grey.shade500 : Colors.grey.shade300,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  if (isDone)
+                    Row(
+                      children: const [
+                        Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 16),
+                        SizedBox(width: 6),
+                        Text(
+                          "Delmål avklarat!",
+                          style: TextStyle(
+                            color: Color(0xFF81C784),
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'MedievalSharp',
+                          ),
+                        ),
+                      ],
+                    )
+                  else ...[
+                    // Autofill button for subquest
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _getSubQuestController(subKey).text = sub.password;
+                          });
+                        },
+                        icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
+                        label: const Text(
+                          "Autofill password (tillfällig knapp för testare)",
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFE5C158),
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: Colors.black,
+                              border: Border.all(color: const Color(0xFF8B7355), width: 1.0),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: TextField(
+                              controller: _getSubQuestController(subKey),
+                              style: const TextStyle(
+                                color: Color(0xFFE5C158),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                              decoration: const InputDecoration(
+                                hintText: "Enter Sub-Quest Password",
+                                hintStyle: TextStyle(color: Colors.grey, fontSize: 11),
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () => _submitSubQuestPassword(quest, sub),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFE5C158),
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          child: const Text(
+                            "COMPLETE",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   // 4. GRINDING DASHBOARD VIEW
   Widget _buildGrindingScreen() {
     final bool reachedVictory = _level >= _targetLevel;
@@ -1530,83 +1868,88 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             ),
                             const SizedBox(height: 10),
                             
-                            // Autofill password button for testers
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: () {
-                                  setState(() {
-                                    _questPasswordController.text = currentQuest.password;
-                                  });
-                                },
-                                icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
-                                label: const Text(
-                                  "Autofill password (tillfällig knapp för testare)",
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFFE5C158),
-                                    decoration: TextDecoration.underline,
+                            // Display subquests UI if quest has subquests, otherwise normal single quest UI
+                            if (currentQuest.hasSubquests)
+                              _buildSubquestsList(currentQuest)
+                            else ...[
+                              // Autofill password button for testers
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton.icon(
+                                  onPressed: () {
+                                    setState(() {
+                                      _questPasswordController.text = currentQuest.password;
+                                    });
+                                  },
+                                  icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
+                                  label: const Text(
+                                    "Autofill password (tillfällig knapp för testare)",
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFFE5C158),
+                                      decoration: TextDecoration.underline,
+                                    ),
                                   ),
-                                ),
-                                style: TextButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 14),
-                            
-                            // Password entry
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Container(
-                                    height: 42,
-                                    decoration: BoxDecoration(
-                                      color: Colors.black,
-                                      border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
-                                      borderRadius: BorderRadius.circular(6),
+                              const SizedBox(height: 14),
+                              
+                              // Password entry
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      height: 42,
+                                      decoration: BoxDecoration(
+                                        color: Colors.black,
+                                        border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: TextField(
+                                        controller: _questPasswordController,
+                                        style: const TextStyle(
+                                          color: Color(0xFFE5C158),
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          hintText: "Enter Quest Password",
+                                          hintStyle: TextStyle(color: Colors.grey, fontSize: 12),
+                                          border: InputBorder.none,
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                          isDense: true,
+                                        ),
+                                      ),
                                     ),
-                                    child: TextField(
-                                      controller: _questPasswordController,
-                                      style: const TextStyle(
-                                        color: Color(0xFFE5C158),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton(
+                                    onPressed: _submitQuestPassword,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFE5C158),
+                                      foregroundColor: Colors.black,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    ),
+                                    child: const Text(
+                                      "COMPLETE",
+                                      style: TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                      decoration: const InputDecoration(
-                                        hintText: "Enter Quest Password",
-                                        hintStyle: TextStyle(color: Colors.grey, fontSize: 12),
-                                        border: InputBorder.none,
-                                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                        isDense: true,
+                                        fontSize: 12,
+                                        letterSpacing: 0.5,
                                       ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                ElevatedButton(
-                                  onPressed: _submitQuestPassword,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFE5C158),
-                                    foregroundColor: Colors.black,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                  ),
-                                  child: const Text(
-                                    "COMPLETE",
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                             
                             // Error text
                             if (_questError.isNotEmpty) ...[
