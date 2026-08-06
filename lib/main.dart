@@ -18,7 +18,7 @@ void main() async {
   runApp(const DAoCLevelCounterApp());
 }
 
-enum AdventureState { countdown, login, intro, grinding }
+enum AdventureState { countdown, login, intro, grinding, admin }
 
 class DAoCLevelCounterApp extends StatelessWidget {
   const DAoCLevelCounterApp({super.key});
@@ -211,6 +211,7 @@ class MainAdventureManager extends StatefulWidget {
 
 class _MainAdventureManagerState extends State<MainAdventureManager> {
   AdventureState _state = AdventureState.countdown;
+  bool _isAdmin = false;
   int _level = 50; // DAoC character starts at max level 50
   final int _targetLevel = 1337;
   bool _isLoading = true;
@@ -529,6 +530,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final prefs = await SharedPreferences.getInstance();
     final level = prefs.getInt('aragnoz_level') ?? 50;
     final savedStateIndex = prefs.getInt('adventure_state') ?? AdventureState.countdown.index;
+    final isAdmin = prefs.getBool('is_admin') ?? false;
     final completedQuests = prefs.getInt('completed_quests_count') ?? 0;
     final completedSubQuestsList = prefs.getStringList('completed_subquests') ?? [];
     
@@ -544,13 +546,14 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       setState(() {
         _level = level;
         _state = savedState;
+        _isAdmin = isAdmin;
         _completedQuestsCount = completedQuests;
         _completedSubQuestKeys = completedSubQuestsList.toSet();
         _isLoading = false;
       });
     }
 
-    if (!_audioInitialized && (savedState == AdventureState.login || savedState == AdventureState.grinding)) {
+    if (!_audioInitialized && (savedState == AdventureState.login || savedState == AdventureState.grinding || savedState == AdventureState.admin)) {
       _audioInitialized = true;
       _startMusic();
     }
@@ -561,6 +564,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     if (!AudioController.instance.isMuted) {
       AudioController.instance.playThemeMusic();
     }
+  }
+
+  Future<void> _saveAdminState(bool isAdmin) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_admin', isAdmin);
   }
 
   Future<void> _saveAdventureState(AdventureState state) async {
@@ -609,11 +617,16 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final cls = _classController.text.trim().toLowerCase();
     final rc = _raceController.text.trim().toLowerCase();
 
-    if (user == 'aragnoz' && cls == 'shaman' && rc == 'troll') {
+    final isAdminUser = (user == 'hetelmers hot' || user == 'spellhound');
+    final isAragnozUser = (user == 'aragnoz' && cls == 'shaman' && rc == 'troll');
+
+    if (isAdminUser || isAragnozUser) {
       setState(() {
         _loginError = "";
+        _isAdmin = isAdminUser;
         _state = AdventureState.intro;
       });
+      _saveAdminState(isAdminUser);
       _saveAdventureState(AdventureState.intro);
       AudioController.instance.playLevelUpSound();
       _startMusic(); // Ensure music plays
@@ -626,6 +639,19 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // Quest Verification
   void _submitQuestPassword() {
+    if (_isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFFC62828),
+          content: Text(
+            "Åskådarläge: Administatörer kan inte klara uppdrag.",
+            style: TextStyle(fontFamily: 'MedievalSharp', color: Colors.white),
+          ),
+        ),
+      );
+      return;
+    }
+
     final inputPassword = _questPasswordController.text.trim();
     if (inputPassword.isEmpty) return;
 
@@ -702,6 +728,19 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _submitSubQuestPassword(QuestInfo quest, SubQuestInfo sub) {
+    if (_isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFFC62828),
+          content: Text(
+            "Åskådarläge: Administatörer kan inte klara delmål.",
+            style: TextStyle(fontFamily: 'MedievalSharp', color: Colors.white),
+          ),
+        ),
+      );
+      return;
+    }
+
     final subKey = "${quest.id}_${sub.id}";
     final controller = _getSubQuestController(subKey);
     final inputPassword = controller.text.trim();
@@ -906,6 +945,13 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     foregroundColor: Colors.black,
                   ),
                   onPressed: () {
+                    if (_isAdmin) {
+                      setDialogState(() {
+                        dialogError = "Åskådarläge: Administatörer kan inte dricka potions.";
+                      });
+                      return;
+                    }
+
                     final rawInput = _potionPasswordController.text.trim();
                     
                     PotionSecretInfo? matchedSecret;
@@ -981,6 +1027,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     setState(() {
       _level = 50; // Back to starting level 50
       _state = AdventureState.countdown;
+      _isAdmin = false;
       _bypassClicks = 0;
       _completedQuestsCount = 0;
       _completedSubQuestKeys.clear();
@@ -998,6 +1045,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _saveLevel(50);
     _saveCompletedQuests(0);
     _saveCompletedSubQuests();
+    _saveAdminState(false);
     _saveAdventureState(AdventureState.countdown);
     AudioController.instance.toggleMute(); // Reset audio toggle
   }
@@ -1699,6 +1747,57 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (_isAdmin) ...[
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4A148C).withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFBA68C8), width: 1.5),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.admin_panel_settings, color: Color(0xFFE1BEE7), size: 22),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  "ÅSKÅDAR- / ADMINLÄGE\n(Kan se status, men ej klara uppdrag/potions)",
+                                  style: TextStyle(
+                                    fontFamily: 'MedievalSharp',
+                                    fontSize: 11,
+                                    color: Color(0xFFE1BEE7),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _state = AdventureState.admin;
+                                  });
+                                },
+                                icon: const Icon(Icons.settings, size: 14, color: Colors.black),
+                                label: const Text(
+                                  "ADMIN-MENY",
+                                  style: TextStyle(
+                                    fontFamily: 'MedievalSharp',
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFFFD700),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const Text(
                         "MIDGARD SHAMAN QUEST",
                         style: TextStyle(
@@ -2418,6 +2517,521 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   // ==========================================
+  // ADMIN VIEW & QUEST MANAGEMENT
+  // ==========================================
+  Future<void> _reorderQuests(int currentIndex, int targetIndex) async {
+    if (targetIndex < 0 || targetIndex >= _quests.length) return;
+
+    List<QuestInfo> reordered = List.from(_quests);
+    final item = reordered.removeAt(currentIndex);
+    reordered.insert(targetIndex, item);
+
+    final batch = FirebaseFirestore.instance.batch();
+    for (int i = 0; i < reordered.length; i++) {
+      final q = reordered[i];
+      final newOrder = i + 1;
+      final docRef = FirebaseFirestore.instance.collection('quests').doc(q.id);
+      batch.update(docRef, {'order': newOrder});
+    }
+
+    try {
+      await batch.commit();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Color(0xFF2E7D32),
+            content: Text("Uppdragsordning uppdaterad!"),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("Failed to reorder quests in Firestore: $e");
+    }
+  }
+
+  void _showQuestDialog({QuestInfo? existingQuest}) {
+    final isEditing = existingQuest != null;
+    final titleController = TextEditingController(text: existingQuest?.title ?? '');
+    final descController = TextEditingController(text: existingQuest?.description ?? '');
+    final passwordController = TextEditingController(text: existingQuest?.password ?? '');
+    final rewardController = TextEditingController(text: (existingQuest?.rewardLevels ?? 10).toString());
+    final orderController = TextEditingController(text: (existingQuest?.order ?? (_quests.length + 1)).toString());
+
+    List<SubQuestInfo> tempSubquests = existingQuest != null ? List.from(existingQuest.subquests) : [];
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E2125),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Color(0xFFD4AF37), width: 1.8),
+              ),
+              title: Text(
+                isEditing ? "Redigera uppdrag" : "Lägg till nytt uppdrag",
+                style: const TextStyle(color: Color(0xFFE5C158), fontFamily: 'MedievalSharp'),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _adminTextField("Titel", titleController),
+                    const SizedBox(height: 10),
+                    _adminTextField("Beskrivning", descController, maxLines: 3),
+                    const SizedBox(height: 10),
+                    _adminTextField("Lösenord", passwordController),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(child: _adminTextField("Belöning (levlar)", rewardController, isNumber: true)),
+                        const SizedBox(width: 10),
+                        Expanded(child: _adminTextField("Ordning (1, 2, ...)", orderController, isNumber: true)),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "DELMÅL / SUBQUESTS",
+                          style: TextStyle(fontFamily: 'MedievalSharp', fontSize: 13, color: Color(0xFFD4AF37), fontWeight: FontWeight.bold),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle, color: Color(0xFF4CAF50)),
+                          onPressed: () {
+                            _showSubquestDialog(
+                              onSave: (newSub) {
+                                setDialogState(() {
+                                  tempSubquests.add(newSub);
+                                });
+                              },
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                    if (tempSubquests.isEmpty)
+                      const Text("Inga delmål tillagda.", style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic))
+                    else
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: tempSubquests.length,
+                        itemBuilder: (context, index) {
+                          final sq = tempSubquests[index];
+                          return Card(
+                            color: const Color(0xFF0F1115),
+                            child: ListTile(
+                              dense: true,
+                              title: Text(sq.title, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                              subtitle: Text("Kod: ${sq.password} | +${sq.rewardLevels} Lvl", style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, size: 18, color: Color(0xFFE5C158)),
+                                    onPressed: () {
+                                      _showSubquestDialog(
+                                        existingSub: sq,
+                                        onSave: (updatedSub) {
+                                          setDialogState(() {
+                                            tempSubquests[index] = updatedSub;
+                                          });
+                                        },
+                                      );
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, size: 18, color: Color(0xFFFF5252)),
+                                    onPressed: () {
+                                      setDialogState(() {
+                                        tempSubquests.removeAt(index);
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Avbryt", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE5C158),
+                    foregroundColor: Colors.black,
+                  ),
+                  onPressed: () async {
+                    final title = titleController.text.trim();
+                    if (title.isEmpty) return;
+
+                    final password = passwordController.text.trim();
+                    final desc = descController.text.trim();
+                    final reward = int.tryParse(rewardController.text.trim()) ?? 10;
+                    final order = int.tryParse(orderController.text.trim()) ?? (_quests.length + 1);
+
+                    final docId = isEditing ? existingQuest.id : "quest_${DateTime.now().millisecondsSinceEpoch}";
+                    final docRef = FirebaseFirestore.instance.collection('quests').doc(docId);
+
+                    final questData = {
+                      'title': title,
+                      'password': password,
+                      'description': desc,
+                      'rewardLevels': reward,
+                      'order': order,
+                      'subquests': tempSubquests.map((s) => s.toMap()).toList(),
+                    };
+
+                    await docRef.set(questData, SetOptions(merge: true));
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          backgroundColor: const Color(0xFF2E7D32),
+                          content: Text(isEditing ? "Uppdrag uppdaterat!" : "Nytt uppdrag skapat!"),
+                        ),
+                      );
+                    }
+                  },
+                  child: Text(isEditing ? "Spara" : "Skapa", style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showSubquestDialog({SubQuestInfo? existingSub, required Function(SubQuestInfo) onSave}) {
+    final titleController = TextEditingController(text: existingSub?.title ?? '');
+    final descController = TextEditingController(text: existingSub?.description ?? '');
+    final passwordController = TextEditingController(text: existingSub?.password ?? '');
+    final rewardController = TextEditingController(text: (existingSub?.rewardLevels ?? 10).toString());
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF262C34),
+          title: Text(
+            existingSub != null ? "Redigera delmål" : "Lägg till delmål",
+            style: const TextStyle(color: Color(0xFFE5C158), fontFamily: 'MedievalSharp', fontSize: 16),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _adminTextField("Delmål Titel", titleController),
+                const SizedBox(height: 8),
+                _adminTextField("Beskrivning", descController, maxLines: 2),
+                const SizedBox(height: 8),
+                _adminTextField("Lösenord", passwordController),
+                const SizedBox(height: 8),
+                _adminTextField("Belöning (levlar)", rewardController, isNumber: true),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Avbryt", style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE5C158), foregroundColor: Colors.black),
+              onPressed: () {
+                final title = titleController.text.trim();
+                if (title.isEmpty) return;
+                final sub = SubQuestInfo(
+                  id: existingSub?.id ?? "sub_${DateTime.now().millisecondsSinceEpoch}",
+                  title: title,
+                  password: passwordController.text.trim(),
+                  description: descController.text.trim(),
+                  rewardLevels: int.tryParse(rewardController.text.trim()) ?? 10,
+                );
+                onSave(sub);
+                Navigator.pop(context);
+              },
+              child: const Text("Spara delmål"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _adminTextField(String label, TextEditingController controller, {bool isNumber = false, int maxLines = 1}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11, fontFamily: 'MedievalSharp')),
+        const SizedBox(height: 4),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.black,
+            border: Border.all(color: const Color(0xFF8B7355), width: 1.0),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: TextField(
+            controller: controller,
+            keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+            maxLines: maxLines,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              isDense: true,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _confirmDeleteQuest(QuestInfo quest) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2125),
+          title: const Text("Ta bort uppdrag?", style: TextStyle(color: Color(0xFFFF5252), fontFamily: 'MedievalSharp')),
+          content: Text("Är du säker på att du vill ta bort uppdraget '${quest.title}'? Detta går inte att ångra."),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Avbryt")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD32F2F)),
+              onPressed: () async {
+                Navigator.pop(context);
+                await FirebaseFirestore.instance.collection('quests').doc(quest.id).delete();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: const Color(0xFFD32F2F),
+                      content: Text("Uppdraget '${quest.title}' har tagits bort."),
+                    ),
+                  );
+                }
+              },
+              child: const Text("Ta bort", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildAdminScreen() {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F1115),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF1E2125),
+        iconTheme: const IconThemeData(color: Color(0xFFE5C158)),
+        title: const Text(
+          "⚙️ UPPDRAGSHANTERING (ADMIN)",
+          style: TextStyle(
+            fontFamily: 'Cinzel Decorative',
+            fontSize: 16,
+            color: Color(0xFFE5C158),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _state = AdventureState.grinding;
+                });
+              },
+              icon: const Icon(Icons.visibility, size: 16, color: Colors.black),
+              label: const Text(
+                "TILLBAKA TILL ARAGNOZ",
+                style: TextStyle(fontFamily: 'MedievalSharp', fontSize: 11, color: Colors.black, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE5C158),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              color: Colors.black45,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Totalt ${_quests.length} uppdrag i databasen",
+                    style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'MedievalSharp'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () => _showQuestDialog(),
+                    icon: const Icon(Icons.add, size: 18, color: Colors.black),
+                    label: const Text("Nytt Uppdrag", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF4CAF50),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ReorderableListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: _quests.length,
+                onReorder: (oldIndex, newIndex) {
+                  if (newIndex > oldIndex) {
+                    newIndex -= 1;
+                  }
+                  _reorderQuests(oldIndex, newIndex);
+                },
+                itemBuilder: (context, index) {
+                  final quest = _quests[index];
+                  return Card(
+                    key: ValueKey(quest.id),
+                    color: const Color(0xFF1E2125),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: const BorderSide(color: Color(0xFF8B7355), width: 1.2),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFD4AF37).withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: const Color(0xFFD4AF37), width: 1),
+                                ),
+                                child: Text(
+                                  "#${quest.order}",
+                                  style: const TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  quest.title,
+                                  style: const TextStyle(
+                                    fontFamily: 'MedievalSharp',
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  "+${quest.rewardLevels} Lvl",
+                                  style: const TextStyle(color: Color(0xFF81C784), fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (quest.description.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              quest.description,
+                              style: const TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic),
+                            ),
+                          ],
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Icon(Icons.key, size: 14, color: Color(0xFFD4AF37)),
+                              const SizedBox(width: 4),
+                              Text(
+                                "Lösenord: ${quest.password.isEmpty ? '(inga, har delmål)' : quest.password}",
+                                style: const TextStyle(color: Color(0xFFE5C158), fontSize: 12, fontFamily: 'MedievalSharp'),
+                              ),
+                              if (quest.hasSubquests) ...[
+                                const SizedBox(width: 12),
+                                Text(
+                                  "(${quest.subquests.length} delmål)",
+                                  style: const TextStyle(color: Colors.cyanAccent, fontSize: 11),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const Divider(color: Color(0xFF3E474F), height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              // Move up/down buttons
+                              IconButton(
+                                icon: const Icon(Icons.arrow_upward, size: 20, color: Colors.grey),
+                                onPressed: index > 0 ? () => _reorderQuests(index, index - 1) : null,
+                                tooltip: "Flytta upp",
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.arrow_downward, size: 20, color: Colors.grey),
+                                onPressed: index < _quests.length - 1 ? () => _reorderQuests(index, index + 1) : null,
+                                tooltip: "Flytta ner",
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton.icon(
+                                onPressed: () => _showQuestDialog(existingQuest: quest),
+                                icon: const Icon(Icons.edit, size: 16, color: Colors.black),
+                                label: const Text("Redigera", style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFE5C158),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton.icon(
+                                onPressed: () => _confirmDeleteQuest(quest),
+                                icon: const Icon(Icons.delete, size: 16, color: Colors.white),
+                                label: const Text("Ta bort", style: TextStyle(color: Colors.white, fontSize: 11)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFD32F2F),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
   // VIEW MANAGER
   // ==========================================
   @override
@@ -2438,6 +3052,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         return _buildIntroScreen();
       case AdventureState.grinding:
         return _buildGrindingScreen();
+      case AdventureState.admin:
+        return _buildAdminScreen();
     }
   }
 }
