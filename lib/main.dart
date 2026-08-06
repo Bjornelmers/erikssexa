@@ -305,6 +305,30 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       description: "Allfadern i den nordiska mytologin. (Upprepat quest!)",
       order: 5,
     ),
+    QuestInfo(
+      id: "quest_6",
+      title: "Quest 6: The Trial of Valhalla",
+      password: "valhalla",
+      rewardLevels: 100,
+      description: "Beskrivning för Quest 6. Ändra titel, beskrivning och lösenord i Firebase Console.",
+      order: 6,
+    ),
+    QuestInfo(
+      id: "quest_7",
+      title: "Quest 7: The Runes of Power",
+      password: "rune",
+      rewardLevels: 100,
+      description: "Beskrivning för Quest 7. Ändra titel, beskrivning och lösenord i Firebase Console.",
+      order: 7,
+    ),
+    QuestInfo(
+      id: "quest_8",
+      title: "Quest 8: The Final Horn",
+      password: "skål",
+      rewardLevels: 100,
+      description: "Beskrivning för Quest 8. Ändra titel, beskrivning och lösenord i Firebase Console.",
+      order: 8,
+    ),
   ];
 
   // Active quest list dynamically populated from Firestore
@@ -402,10 +426,21 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         }
       }
 
+      // Check for missing default quests (e.g. quest_6, quest_7, quest_8) and create them automatically
+      final existingIds = snapshot.docs.map((doc) => doc.id).toSet();
+
+      for (final dq in _defaultQuests) {
+        if (!existingIds.contains(dq.id)) {
+          needsMigration = true;
+          final docRef = questsRef.doc(dq.id);
+          batch.set(docRef, dq.toMap());
+        }
+      }
+
       if (needsMigration) {
-        debugPrint("Migrating Firestore quest documents to remove 'hint' and set 'description'...");
+        debugPrint("Updating/Seeding Firestore quest documents...");
         await batch.commit().catchError((e) {
-          debugPrint("Failed to migrate quest documents: $e");
+          debugPrint("Failed to update quest documents: $e");
         });
       }
       
