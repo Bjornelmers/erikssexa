@@ -2831,6 +2831,106 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
+  void _showPotionDialog({PotionSecretInfo? existingPotion}) {
+    final isEditing = existingPotion != null;
+    final secretController = TextEditingController(text: existingPotion?.secret ?? '');
+    final rewardController = TextEditingController(text: (existingPotion?.rewardLevels ?? 10).toString());
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2125),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFFD4AF37), width: 1.8),
+          ),
+          title: Text(
+            isEditing ? "Redigera Potion" : "Lägg till ny Potion-kod",
+            style: const TextStyle(color: Color(0xFFE5C158), fontFamily: 'MedievalSharp'),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _adminTextField("Hemligt meddelande / Kod", secretController),
+              const SizedBox(height: 10),
+              _adminTextField("Belöning i levlar", rewardController, isNumber: true),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Avbryt", style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE5C158),
+                foregroundColor: Colors.black,
+              ),
+              onPressed: () async {
+                final secret = secretController.text.trim();
+                if (secret.isEmpty) return;
+
+                final reward = int.tryParse(rewardController.text.trim()) ?? 10;
+                final docId = isEditing ? existingPotion.id : "potion_${DateTime.now().millisecondsSinceEpoch}";
+                final docRef = FirebaseFirestore.instance.collection('potion_secrets').doc(docId);
+
+                await docRef.set({
+                  'secret': secret,
+                  'rewardLevels': reward,
+                }, SetOptions(merge: true));
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: const Color(0xFF2E7D32),
+                      content: Text(isEditing ? "Potion-kod uppdaterad!" : "Ny potion-kod skapad!"),
+                    ),
+                  );
+                }
+              },
+              child: Text(isEditing ? "Spara" : "Skapa", style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _confirmDeletePotion(PotionSecretInfo potion) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2125),
+          title: const Text("Ta bort Potion?", style: TextStyle(color: Color(0xFFFF5252), fontFamily: 'MedievalSharp')),
+          content: Text("Är du säker på att du vill ta bort potion-koden '${potion.secret}'?"),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Avbryt")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD32F2F)),
+              onPressed: () async {
+                Navigator.pop(context);
+                await FirebaseFirestore.instance.collection('potion_secrets').doc(potion.id).delete();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: const Color(0xFFD32F2F),
+                      content: Text("Potion-koden '${potion.secret}' har tagits bort."),
+                    ),
+                  );
+                }
+              },
+              child: const Text("Ta bort", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildAdminScreen() {
     int totalQuestLevels = 0;
     for (final q in _quests) {
@@ -2839,273 +2939,125 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         totalQuestLevels += sq.rewardLevels;
       }
     }
-    final int maxAchievableLevel = 50 + totalQuestLevels;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F1115),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1E2125),
-        iconTheme: const IconThemeData(color: Color(0xFFE5C158)),
-        title: const Text(
-          "⚙️ UPPDRAGSHANTERING (ADMIN)",
-          style: TextStyle(
-            fontFamily: 'Cinzel Decorative',
-            fontSize: 16,
-            color: Color(0xFFE5C158),
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _state = AdventureState.grinding;
-                });
-              },
-              icon: const Icon(Icons.visibility, size: 16, color: Colors.black),
-              label: const Text(
-                "TILLBAKA TILL ARAGNOZ",
-                style: TextStyle(fontFamily: 'MedievalSharp', fontSize: 11, color: Colors.black, fontWeight: FontWeight.bold),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE5C158),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              ),
+    int potionCount = 10;
+    int potionRewardPerBottle = _potionSecrets.isNotEmpty ? _potionSecrets.first.rewardLevels : 10;
+    int totalPotionLevels = potionCount * potionRewardPerBottle;
+
+    final int maxAchievableLevel = 50 + totalQuestLevels + totalPotionLevels;
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F1115),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1E2125),
+          iconTheme: const IconThemeData(color: Color(0xFFE5C158)),
+          title: const Text(
+            "⚙️ ADMINPANEL",
+            style: TextStyle(
+              fontFamily: 'Cinzel Decorative',
+              fontSize: 16,
+              color: Color(0xFFE5C158),
+              fontWeight: FontWeight.bold,
             ),
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Max Level Summary Card at top of Admin View
-            Container(
-              margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF2C2214), Color(0xFF16110A)],
-                ),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFFFD700), width: 1.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFFFD700).withValues(alpha: 0.15),
-                    blurRadius: 8,
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFD700).withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.star_rounded, color: Color(0xFFFFD700), size: 28),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "MAX LEVEL OM ALLA UPPDRAG KLARAS:",
-                          style: TextStyle(
-                            fontFamily: 'MedievalSharp',
-                            fontSize: 11,
-                            color: Colors.grey,
-                            letterSpacing: 0.8,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Text(
-                              "Level $maxAchievableLevel",
-                              style: const TextStyle(
-                                fontFamily: 'Cinzel Decorative',
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFFFD700),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              "(Start 50 + $totalQuestLevels Lvl)",
-                              style: const TextStyle(
-                                fontFamily: 'MedievalSharp',
-                                fontSize: 12,
-                                color: Color(0xFF81C784),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (maxAchievableLevel >= 1337)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF4CAF50).withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: const Color(0xFF4CAF50), width: 1),
-                      ),
-                      child: const Text(
-                        "GOAL REACHED! (≥1337)",
-                        style: TextStyle(color: Color(0xFF81C784), fontSize: 10, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(12),
-              color: Colors.black45,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Totalt ${_quests.length} uppdrag i databasen",
-                    style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'MedievalSharp'),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: () => _showQuestDialog(),
-                    icon: const Icon(Icons.add, size: 18, color: Colors.black),
-                    label: const Text("Nytt Uppdrag", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4CAF50),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ReorderableListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: _quests.length,
-                onReorder: (oldIndex, newIndex) {
-                  if (newIndex > oldIndex) {
-                    newIndex -= 1;
-                  }
-                  _reorderQuests(oldIndex, newIndex);
+          bottom: const TabBar(
+            indicatorColor: Color(0xFFFFD700),
+            labelColor: Color(0xFFFFD700),
+            unselectedLabelColor: Colors.grey,
+            tabs: [
+              Tab(icon: Icon(Icons.assignment), text: "Uppdrag"),
+              Tab(icon: Icon(Icons.science), text: "Potions"),
+            ],
+          ),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _state = AdventureState.grinding;
+                  });
                 },
-                itemBuilder: (context, index) {
-                  final quest = _quests[index];
-                  return Card(
-                    key: ValueKey(quest.id),
-                    color: const Color(0xFF1E2125),
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      side: const BorderSide(color: Color(0xFF8B7355), width: 1.2),
+                icon: const Icon(Icons.visibility, size: 16, color: Colors.black),
+                label: const Text(
+                  "TILLBAKA TILL ARAGNOZ",
+                  style: TextStyle(fontFamily: 'MedievalSharp', fontSize: 11, color: Colors.black, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE5C158),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+              ),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Max Level Summary Card at top of Admin View
+              Container(
+                margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2C2214), Color(0xFF16110A)],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFFD700), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                      blurRadius: 8,
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFD700).withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.star_rounded, color: Color(0xFFFFD700), size: 28),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          const Text(
+                            "MAX LEVEL (UPPDRAG + 10 ST POTIONS):",
+                            style: TextStyle(
+                              fontFamily: 'MedievalSharp',
+                              fontSize: 11,
+                              color: Colors.grey,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
                           Row(
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFD4AF37).withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: const Color(0xFFD4AF37), width: 1),
-                                ),
-                                child: Text(
-                                  "#${quest.order}",
-                                  style: const TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold, fontSize: 12),
+                              Text(
+                                "Level $maxAchievableLevel",
+                                style: const TextStyle(
+                                  fontFamily: 'Cinzel Decorative',
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFFFD700),
                                 ),
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  quest.title,
+                                  "(Start 50 + $totalQuestLevels Lvl uppdrag + $totalPotionLevels Lvl från 10 st potions)",
                                   style: const TextStyle(
                                     fontFamily: 'MedievalSharp',
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                                    fontSize: 11,
+                                    color: Color(0xFF81C784),
                                   ),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  "+${quest.rewardLevels} Lvl",
-                                  style: const TextStyle(color: Color(0xFF81C784), fontSize: 11, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (quest.description.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              quest.description,
-                              style: const TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic),
-                            ),
-                          ],
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              const Icon(Icons.key, size: 14, color: Color(0xFFD4AF37)),
-                              const SizedBox(width: 4),
-                              Text(
-                                "Lösenord: ${quest.password.isEmpty ? '(inga, har delmål)' : quest.password}",
-                                style: const TextStyle(color: Color(0xFFE5C158), fontSize: 12, fontFamily: 'MedievalSharp'),
-                              ),
-                              if (quest.hasSubquests) ...[
-                                const SizedBox(width: 12),
-                                Text(
-                                  "(${quest.subquests.length} delmål)",
-                                  style: const TextStyle(color: Colors.cyanAccent, fontSize: 11),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const Divider(color: Color(0xFF3E474F), height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              // Move up/down buttons
-                              IconButton(
-                                icon: const Icon(Icons.arrow_upward, size: 20, color: Colors.grey),
-                                onPressed: index > 0 ? () => _reorderQuests(index, index - 1) : null,
-                                tooltip: "Flytta upp",
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.arrow_downward, size: 20, color: Colors.grey),
-                                onPressed: index < _quests.length - 1 ? () => _reorderQuests(index, index + 1) : null,
-                                tooltip: "Flytta ner",
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton.icon(
-                                onPressed: () => _showQuestDialog(existingQuest: quest),
-                                icon: const Icon(Icons.edit, size: 16, color: Colors.black),
-                                label: const Text("Redigera", style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFE5C158),
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton.icon(
-                                onPressed: () => _confirmDeleteQuest(quest),
-                                icon: const Icon(Icons.delete, size: 16, color: Colors.white),
-                                label: const Text("Ta bort", style: TextStyle(color: Colors.white, fontSize: 11)),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFD32F2F),
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                 ),
                               ),
                             ],
@@ -3113,11 +3065,299 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         ],
                       ),
                     ),
-                  );
-                },
+                    if (maxAchievableLevel >= 1337)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF4CAF50).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFF4CAF50), width: 1),
+                        ),
+                        child: const Text(
+                          "GOAL REACHED! (≥1337)",
+                          style: TextStyle(color: Color(0xFF81C784), fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          ],
+
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    // Tab 1: Quests Manager
+                    Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          color: Colors.black45,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "Totalt ${_quests.length} uppdrag i databasen",
+                                style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'MedievalSharp'),
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: () => _showQuestDialog(),
+                                icon: const Icon(Icons.add, size: 18, color: Colors.black),
+                                label: const Text("Nytt Uppdrag", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF4CAF50),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: ReorderableListView.builder(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: _quests.length,
+                            onReorder: (oldIndex, newIndex) {
+                              if (newIndex > oldIndex) {
+                                newIndex -= 1;
+                              }
+                              _reorderQuests(oldIndex, newIndex);
+                            },
+                            itemBuilder: (context, index) {
+                              final quest = _quests[index];
+                              return Card(
+                                key: ValueKey(quest.id),
+                                color: const Color(0xFF1E2125),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: const BorderSide(color: Color(0xFF8B7355), width: 1.2),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFD4AF37).withValues(alpha: 0.2),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(color: const Color(0xFFD4AF37), width: 1),
+                                            ),
+                                            child: Text(
+                                              "#${quest.order}",
+                                              style: const TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold, fontSize: 12),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              quest.title,
+                                              style: const TextStyle(
+                                                fontFamily: 'MedievalSharp',
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              "+${quest.rewardLevels} Lvl",
+                                              style: const TextStyle(color: Color(0xFF81C784), fontSize: 11, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      if (quest.description.isNotEmpty) ...[
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          quest.description,
+                                          style: const TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.key, size: 14, color: Color(0xFFD4AF37)),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            "Lösenord: ${quest.password.isEmpty ? '(inga, har delmål)' : quest.password}",
+                                            style: const TextStyle(color: Color(0xFFE5C158), fontSize: 12, fontFamily: 'MedievalSharp'),
+                                          ),
+                                          if (quest.hasSubquests) ...[
+                                            const SizedBox(width: 12),
+                                            Text(
+                                              "(${quest.subquests.length} delmål)",
+                                              style: const TextStyle(color: Colors.cyanAccent, fontSize: 11),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      const Divider(color: Color(0xFF3E474F), height: 16),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.arrow_upward, size: 20, color: Colors.grey),
+                                            onPressed: index > 0 ? () => _reorderQuests(index, index - 1) : null,
+                                            tooltip: "Flytta upp",
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.arrow_downward, size: 20, color: Colors.grey),
+                                            onPressed: index < _quests.length - 1 ? () => _reorderQuests(index, index + 1) : null,
+                                            tooltip: "Flytta ner",
+                                          ),
+                                          const SizedBox(width: 8),
+                                          ElevatedButton.icon(
+                                            onPressed: () => _showQuestDialog(existingQuest: quest),
+                                            icon: const Icon(Icons.edit, size: 16, color: Colors.black),
+                                            label: const Text("Redigera", style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(0xFFE5C158),
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          ElevatedButton.icon(
+                                            onPressed: () => _confirmDeleteQuest(quest),
+                                            icon: const Icon(Icons.delete, size: 16, color: Colors.white),
+                                            label: const Text("Ta bort", style: TextStyle(color: Colors.white, fontSize: 11)),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(0xFFD32F2F),
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // Tab 2: Potions Manager
+                    Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          color: Colors.black45,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "Totalt ${_potionSecrets.length} potion-koder i databasen",
+                                style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'MedievalSharp'),
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: () => _showPotionDialog(),
+                                icon: const Icon(Icons.add, size: 18, color: Colors.black),
+                                label: const Text("Ny Potion", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF4CAF50),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: _potionSecrets.length,
+                            itemBuilder: (context, index) {
+                              final potion = _potionSecrets[index];
+                              return Card(
+                                key: ValueKey(potion.id),
+                                color: const Color(0xFF1E2125),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: const BorderSide(color: Color(0xFF8B7355), width: 1.2),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: const Color(0xFFFFD700), width: 1.5),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(20),
+                                          child: Image.asset(
+                                            'assets/images/potion.jpg',
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) =>
+                                                const Icon(Icons.science, color: Color(0xFFFFD700), size: 20),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              potion.secret,
+                                              style: const TextStyle(
+                                                fontFamily: 'MedievalSharp',
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFFE5C158),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              "Belöning: +${potion.rewardLevels} levlar",
+                                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      ElevatedButton.icon(
+                                        onPressed: () => _showPotionDialog(existingPotion: potion),
+                                        icon: const Icon(Icons.edit, size: 16, color: Colors.black),
+                                        label: const Text("Redigera", style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFFE5C158),
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      ElevatedButton.icon(
+                                        onPressed: () => _confirmDeletePotion(potion),
+                                        icon: const Icon(Icons.delete, size: 16, color: Colors.white),
+                                        label: const Text("Ta bort", style: TextStyle(color: Colors.white, fontSize: 11)),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFFD32F2F),
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
