@@ -68,7 +68,7 @@ class QuestInfo {
       title: data['title'] as String? ?? '',
       password: data['password'] as String? ?? '',
       rewardLevels: (data['rewardLevels'] ?? data['reward_levels'] as num?)?.toInt() ?? 10,
-      description: data['description'] as String? ?? data['hint'] as String? ?? '',
+      description: data['description'] as String? ?? '',
       order: (data['order'] as num?)?.toInt() ?? 0,
     );
   }
@@ -272,6 +272,40 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           debugPrint("Failed to seed default quests: $e");
         });
         return;
+      }
+
+      // Check if any existing documents in Firestore still use 'hint' or are missing 'description'
+      bool needsMigration = false;
+      final batch = FirebaseFirestore.instance.batch();
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        if (data.containsKey('hint') || !data.containsKey('description')) {
+          needsMigration = true;
+          
+          String defaultDesc = "";
+          for (final dq in _defaultQuests) {
+            if (dq.id == doc.id) {
+              defaultDesc = dq.description;
+              break;
+            }
+          }
+          if (defaultDesc.isEmpty) {
+            defaultDesc = data['hint'] as String? ?? '';
+          }
+
+          batch.update(doc.reference, {
+            'description': data['description'] as String? ?? defaultDesc,
+            'hint': FieldValue.delete(),
+          });
+        }
+      }
+
+      if (needsMigration) {
+        debugPrint("Migrating Firestore quest documents to remove 'hint' and set 'description'...");
+        await batch.commit().catchError((e) {
+          debugPrint("Failed to migrate quest documents: $e");
+        });
       }
       
       final loadedQuests = snapshot.docs
