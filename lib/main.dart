@@ -96,6 +96,48 @@ class QuestInfo {
   }
 }
 
+class PotionSecretInfo {
+  final String id;
+  final String secret;
+  final int rewardLevels;
+
+  PotionSecretInfo({
+    this.id = '',
+    required this.secret,
+    this.rewardLevels = 10,
+  });
+
+  factory PotionSecretInfo.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return PotionSecretInfo(
+      id: doc.id,
+      secret: data['secret'] as String? ?? '',
+      rewardLevels: (data['rewardLevels'] ?? data['reward_levels'] as num?)?.toInt() ?? 10,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'secret': secret,
+      'rewardLevels': rewardLevels,
+    };
+  }
+
+  bool matches(String input) {
+    final cleanInput = input.trim().toLowerCase();
+    final cleanSecret = secret.trim().toLowerCase();
+    if (cleanSecret.isEmpty) return false;
+
+    if (cleanInput == cleanSecret) return true;
+
+    // Ignore trailing punctuation ! or .
+    final cleanInputNoPunct = cleanInput.replaceAll(RegExp(r'[!.]+$'), '').trim();
+    final cleanSecretNoPunct = cleanSecret.replaceAll(RegExp(r'[!.]+$'), '').trim();
+
+    return cleanInputNoPunct == cleanSecretNoPunct;
+  }
+}
+
 class MainAdventureManager extends StatefulWidget {
   const MainAdventureManager({super.key});
 
@@ -111,6 +153,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   bool _audioInitialized = false;
   StreamSubscription? _stateSubscription;
   StreamSubscription? _questsSubscription;
+  StreamSubscription? _potionSecretsSubscription;
 
   // Countdown target: August 15, 2026, 09:00 AM
   final DateTime _targetDate = DateTime(2026, 8, 15, 9, 0);
@@ -174,6 +217,15 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   // Active quest list dynamically populated from Firestore
   late List<QuestInfo> _quests = List.from(_defaultQuests);
 
+  // Default fallback potion secrets
+  static final List<PotionSecretInfo> _defaultPotionSecrets = [
+    PotionSecretInfo(id: "potion_1", secret: "Potion secret message", rewardLevels: 10),
+    PotionSecretInfo(id: "potion_2", secret: "Potion of level up!", rewardLevels: 10),
+  ];
+
+  // Active potion secrets list dynamically populated from Firestore
+  late List<PotionSecretInfo> _potionSecrets = List.from(_defaultPotionSecrets);
+
   final TextEditingController _questPasswordController = TextEditingController();
   final TextEditingController _potionPasswordController = TextEditingController();
   String _questError = "";
@@ -184,6 +236,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _loadState();
     _initCountdown();
     _listenToQuests();
+    _listenToPotionSecrets();
   }
 
   @override
@@ -191,6 +244,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _countdownTimer?.cancel();
     _stateSubscription?.cancel();
     _questsSubscription?.cancel();
+    _potionSecretsSubscription?.cancel();
     _usernameController.dispose();
     _classController.dispose();
     _raceController.dispose();
@@ -231,6 +285,39 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       }
     }, onError: (error) {
       debugPrint("Error listening to Firestore quests, using defaults: $error");
+    });
+  }
+
+  // Listen to potion secrets from Firestore database
+  void _listenToPotionSecrets() {
+    final secretsRef = FirebaseFirestore.instance.collection('potion_secrets');
+
+    _potionSecretsSubscription = secretsRef.snapshots().listen((snapshot) async {
+      if (snapshot.docs.isEmpty) {
+        debugPrint("Firestore 'potion_secrets' collection is empty. Seeding defaults...");
+        final batch = FirebaseFirestore.instance.batch();
+        for (final s in _defaultPotionSecrets) {
+          final docRef = secretsRef.doc(s.id);
+          batch.set(docRef, s.toMap());
+        }
+        await batch.commit().catchError((e) {
+          debugPrint("Failed to seed default potion secrets: $e");
+        });
+        return;
+      }
+
+      final loadedSecrets = snapshot.docs
+          .map((doc) => PotionSecretInfo.fromFirestore(doc))
+          .where((s) => s.secret.isNotEmpty)
+          .toList();
+
+      if (mounted && loadedSecrets.isNotEmpty) {
+        setState(() {
+          _potionSecrets = loadedSecrets;
+        });
+      }
+    }, onError: (error) {
+      debugPrint("Error listening to Firestore potion secrets, using defaults: $error");
     });
   }
 
@@ -551,22 +638,24 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                   ),
                   onPressed: () {
                     final rawInput = _potionPasswordController.text.trim();
-                    final input = rawInput.toLowerCase();
                     
-                    bool isValid = false;
-                    if (input == 'potion secret message' ||
-                        input == 'potion secret message!' ||
-                        input == 'potion secret message.' ||
-                        input == 'potion of level up !' ||
-                        input == 'potion of level up!' ||
-                        input == 'potion of level up' ||
-                        input == '32167') {
-                      isValid = true;
+                    PotionSecretInfo? matchedSecret;
+                    for (final s in _potionSecrets) {
+                      if (s.matches(rawInput)) {
+                        matchedSecret = s;
+                        break;
+                      }
                     }
 
-                    if (isValid) {
+                    // Master code fallback
+                    if (matchedSecret == null && rawInput == '32167') {
+                      matchedSecret = PotionSecretInfo(secret: '32167', rewardLevels: 10);
+                    }
+
+                    if (matchedSecret != null) {
+                      final reward = matchedSecret.rewardLevels;
                       final oldLevel = _level;
-                      final newLevel = _level + 10;
+                      final newLevel = _level + reward;
                       setState(() {
                         _level = newLevel;
                       });
@@ -576,7 +665,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       try {
                         FirebaseFirestore.instance.collection('quest_logs').add({
                           'timestamp': FieldValue.serverTimestamp(),
-                          'quest_title': 'Magic Potion Consumed (+10 levels)',
+                          'quest_title': 'Magic Potion Consumed (+$reward levels)',
                           'old_level': oldLevel,
                           'new_level': newLevel,
                           'password_used': rawInput,
@@ -595,11 +684,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       }
 
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          backgroundColor: Color(0xFF2E7D32),
+                        SnackBar(
+                          backgroundColor: const Color(0xFF2E7D32),
                           content: Text(
-                            "Slurp! Du drack potionen och fick +10 levlar!",
-                            style: TextStyle(fontFamily: 'MedievalSharp', color: Colors.white),
+                            "Slurp! Du drack potionen och fick +$reward levlar!",
+                            style: const TextStyle(fontFamily: 'MedievalSharp', color: Colors.white),
                           ),
                         ),
                       );
