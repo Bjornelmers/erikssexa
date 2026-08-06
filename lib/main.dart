@@ -85,8 +85,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   bool _audioInitialized = false;
   StreamSubscription? _stateSubscription;
 
-  // Countdown target: August 15, 2026, 10:30 AM
-  final DateTime _targetDate = DateTime(2026, 8, 15, 10, 30);
+  // Countdown target: August 15, 2026, 09:00 AM
+  final DateTime _targetDate = DateTime(2026, 8, 15, 9, 0);
   Timer? _countdownTimer;
   Duration _timeRemaining = Duration.zero;
   int _bypassClicks = 0;
@@ -188,82 +188,34 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     });
   }
 
-  // Load state from Firestore with fallback to SharedPreferences
+  // Load state locally from SharedPreferences
   Future<void> _loadState() async {
-    final docRef = FirebaseFirestore.instance.collection('game').doc('state');
+    final prefs = await SharedPreferences.getInstance();
+    final level = prefs.getInt('aragnoz_level') ?? 50;
+    final savedStateIndex = prefs.getInt('adventure_state') ?? AdventureState.countdown.index;
+    final completedQuests = prefs.getInt('completed_quests_count') ?? 0;
     
-    _stateSubscription = docRef.snapshots().listen((snapshot) async {
-      if (!snapshot.exists) {
-        // Initialize Firestore document if it doesn't exist
-        await docRef.set({
-          'aragnoz_level': 50,
-          'adventure_state': AdventureState.countdown.index,
-          'completed_quests_count': 0,
-        });
-        return;
-      }
-      
-      final data = snapshot.data();
-      if (data == null) return;
-      
-      final level = data['aragnoz_level'] as int? ?? 50;
-      final savedStateIndex = data['adventure_state'] as int? ?? AdventureState.countdown.index;
-      final completedQuests = data['completed_quests_count'] as int? ?? 0;
-      
-      AdventureState savedState = AdventureState.values[savedStateIndex];
+    AdventureState savedState = AdventureState.values[savedStateIndex];
 
-      // Double check time target if saved state was countdown
-      if (savedState == AdventureState.countdown) {
-        if (DateTime.now().isAfter(_targetDate)) {
-          savedState = AdventureState.login;
-          await docRef.update({'adventure_state': AdventureState.login.index});
-        }
+    if (savedState == AdventureState.countdown) {
+      if (DateTime.now().isAfter(_targetDate)) {
+        savedState = AdventureState.login;
       }
+    }
 
-      if (mounted) {
-        setState(() {
-          _level = level;
-          _state = savedState;
-          _completedQuestsCount = completedQuests;
-          _isLoading = false;
-        });
-      }
+    if (mounted) {
+      setState(() {
+        _level = level;
+        _state = savedState;
+        _completedQuestsCount = completedQuests;
+        _isLoading = false;
+      });
+    }
 
-      // Start background music automatically if we are in login or grinding and unmuted
-      if (!_audioInitialized && (savedState == AdventureState.login || savedState == AdventureState.grinding)) {
-        _audioInitialized = true;
-        _startMusic();
-      }
-    }, onError: (error) async {
-      debugPrint("Firestore error, falling back to SharedPreferences: $error");
-      
-      final prefs = await SharedPreferences.getInstance();
-      final level = prefs.getInt('aragnoz_level') ?? 50;
-      final savedStateIndex = prefs.getInt('adventure_state') ?? AdventureState.countdown.index;
-      final completedQuests = prefs.getInt('completed_quests_count') ?? 0;
-      
-      AdventureState savedState = AdventureState.values[savedStateIndex];
-
-      if (savedState == AdventureState.countdown) {
-        if (DateTime.now().isAfter(_targetDate)) {
-          savedState = AdventureState.login;
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _level = level;
-          _state = savedState;
-          _completedQuestsCount = completedQuests;
-          _isLoading = false;
-        });
-      }
-
-      if (!_audioInitialized && (savedState == AdventureState.login || savedState == AdventureState.grinding)) {
-        _audioInitialized = true;
-        _startMusic();
-      }
-    });
+    if (!_audioInitialized && (savedState == AdventureState.login || savedState == AdventureState.grinding)) {
+      _audioInitialized = true;
+      _startMusic();
+    }
   }
 
   void _startMusic() {
@@ -274,48 +226,21 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   Future<void> _saveAdventureState(AdventureState state) async {
-    // Local backup
+    // Save state locally per device
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('adventure_state', state.index);
-    
-    // Firestore update
-    try {
-      await FirebaseFirestore.instance.collection('game').doc('state').update({
-        'adventure_state': state.index,
-      });
-    } catch (e) {
-      debugPrint("Failed to save state to Firestore: $e");
-    }
   }
 
   Future<void> _saveLevel(int level) async {
-    // Local backup
+    // Save level locally per device
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('aragnoz_level', level);
-    
-    // Firestore update
-    try {
-      await FirebaseFirestore.instance.collection('game').doc('state').update({
-        'aragnoz_level': level,
-      });
-    } catch (e) {
-      debugPrint("Failed to save level to Firestore: $e");
-    }
   }
 
   Future<void> _saveCompletedQuests(int count) async {
-    // Local backup
+    // Save completed quests count locally per device
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('completed_quests_count', count);
-    
-    // Firestore update
-    try {
-      await FirebaseFirestore.instance.collection('game').doc('state').update({
-        'completed_quests_count': count,
-      });
-    } catch (e) {
-      debugPrint("Failed to save completed quests to Firestore: $e");
-    }
   }
 
   // Secrets & Bypass
