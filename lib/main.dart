@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -202,6 +201,57 @@ class PotionSecretInfo {
   }
 }
 
+class BonusQuestInfo {
+  final String id;
+  final String title;
+  final String password;
+  final String description;
+  final int rewardLevels;
+  final int unlockedByQuestOrder;
+
+  BonusQuestInfo({
+    this.id = '',
+    required this.title,
+    required this.password,
+    required this.description,
+    this.rewardLevels = 50,
+    this.unlockedByQuestOrder = 1,
+  });
+
+  factory BonusQuestInfo.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return BonusQuestInfo(
+      id: doc.id,
+      title: data['title'] as String? ?? '',
+      password: data['password'] as String? ?? '',
+      description: data['description'] as String? ?? '',
+      rewardLevels: (data['rewardLevels'] ?? data['reward_levels'] as num?)?.toInt() ?? 50,
+      unlockedByQuestOrder: (data['unlockedByQuestOrder'] ?? data['unlocked_by_quest_order'] as num?)?.toInt() ?? 1,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'password': password,
+      'description': description,
+      'rewardLevels': rewardLevels,
+      'unlockedByQuestOrder': unlockedByQuestOrder,
+    };
+  }
+
+  bool checkPassword(String input) {
+    final cleanInput = input.trim().toLowerCase();
+    final cleanPassword = password.trim().toLowerCase();
+    if (cleanPassword.isEmpty) return false;
+
+    final cleanInputNoPunct = cleanInput.replaceAll(RegExp(r'[!.]+$'), '').trim();
+    final cleanPasswordNoPunct = cleanPassword.replaceAll(RegExp(r'[!.]+$'), '').trim();
+
+    return cleanInput == cleanPassword || cleanInputNoPunct == cleanPasswordNoPunct;
+  }
+}
+
 class MainAdventureManager extends StatefulWidget {
   const MainAdventureManager({super.key});
 
@@ -219,6 +269,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   StreamSubscription? _stateSubscription;
   StreamSubscription? _questsSubscription;
   StreamSubscription? _potionSecretsSubscription;
+  StreamSubscription? _bonusQuestsSubscription;
 
   // Countdown target: August 15, 2026, 09:00 AM
   final DateTime _targetDate = DateTime(2026, 8, 15, 9, 0);
@@ -344,6 +395,35 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   // Active potion secrets list dynamically populated from Firestore
   late List<PotionSecretInfo> _potionSecrets = List.from(_defaultPotionSecrets);
 
+  // Default fallback bonus quests
+  static final List<BonusQuestInfo> _defaultBonusQuests = [
+    BonusQuestInfo(
+      id: "bonus_1",
+      title: "Bryt arm med en okänd",
+      password: "stark",
+      rewardLevels: 50,
+      description: "Bryt arm med en person du aldrig träffat förrut.",
+      unlockedByQuestOrder: 1,
+    ),
+    BonusQuestInfo(
+      id: "bonus_2",
+      title: "Presentera Shamanen Aragnoz",
+      password: "stolt",
+      rewardLevels: 50,
+      description: "Presentera dig som Aragnoz, shamanen från Midgard för 3 okända personer.",
+      unlockedByQuestOrder: 2,
+    ),
+  ];
+
+  // Active bonus quests list dynamically populated from Firestore
+  late List<BonusQuestInfo> _bonusQuests = List.from(_defaultBonusQuests);
+  Set<String> _completedBonusQuestKeys = {};
+  final Map<String, TextEditingController> _bonusQuestControllers = {};
+
+  TextEditingController _getBonusQuestController(String key) {
+    return _bonusQuestControllers.putIfAbsent(key, () => TextEditingController());
+  }
+
   final TextEditingController _questPasswordController = TextEditingController();
   final TextEditingController _potionPasswordController = TextEditingController();
   String _questError = "";
@@ -355,6 +435,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _initCountdown();
     _listenToQuests();
     _listenToPotionSecrets();
+    _listenToBonusQuests();
   }
 
   @override
@@ -363,6 +444,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _stateSubscription?.cancel();
     _questsSubscription?.cancel();
     _potionSecretsSubscription?.cancel();
+    _bonusQuestsSubscription?.cancel();
     _usernameController.dispose();
     _classController.dispose();
     _raceController.dispose();
@@ -371,6 +453,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _inputFocusNode.dispose();
     _levelInputController.dispose();
     for (final c in _subQuestControllers.values) {
+      c.dispose();
+    }
+    for (final c in _bonusQuestControllers.values) {
       c.dispose();
     }
     super.dispose();
@@ -492,6 +577,38 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     });
   }
 
+  // Listen to bonus quests from Firestore database
+  void _listenToBonusQuests() {
+    final bonusRef = FirebaseFirestore.instance.collection('bonus_quests');
+
+    _bonusQuestsSubscription = bonusRef.snapshots().listen((snapshot) async {
+      if (snapshot.docs.isEmpty) {
+        debugPrint("Firestore 'bonus_quests' collection is empty. Seeding default bonus quests...");
+        final batch = FirebaseFirestore.instance.batch();
+        for (final b in _defaultBonusQuests) {
+          final docRef = bonusRef.doc(b.id);
+          batch.set(docRef, b.toMap());
+        }
+        await batch.commit().catchError((e) {
+          debugPrint("Failed to seed default bonus quests: $e");
+        });
+        return;
+      }
+
+      final loadedBonus = snapshot.docs
+          .map((doc) => BonusQuestInfo.fromFirestore(doc))
+          .toList();
+
+      if (mounted && loadedBonus.isNotEmpty) {
+        setState(() {
+          _bonusQuests = loadedBonus;
+        });
+      }
+    }, onError: (error) {
+      debugPrint("Error listening to Firestore bonus quests, using defaults: $error");
+    });
+  }
+
   // Focus and dummy node to prevent compilation warnings
   final FocusNode _inputFocusNode = FocusNode();
   final TextEditingController _levelInputController = TextEditingController();
@@ -533,6 +650,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final isAdmin = prefs.getBool('is_admin') ?? false;
     final completedQuests = prefs.getInt('completed_quests_count') ?? 0;
     final completedSubQuestsList = prefs.getStringList('completed_subquests') ?? [];
+    final completedBonusQuestsList = prefs.getStringList('completed_bonus_quests') ?? [];
     
     AdventureState savedState = AdventureState.values[savedStateIndex];
 
@@ -549,6 +667,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         _isAdmin = isAdmin;
         _completedQuestsCount = completedQuests;
         _completedSubQuestKeys = completedSubQuestsList.toSet();
+        _completedBonusQuestKeys = completedBonusQuestsList.toSet();
         _isLoading = false;
       });
     }
@@ -592,6 +711,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   Future<void> _saveCompletedSubQuests() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('completed_subquests', _completedSubQuestKeys.toList());
+  }
+
+  Future<void> _saveCompletedBonusQuests() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('completed_bonus_quests', _completedBonusQuestKeys.toList());
   }
 
   // Secrets & Bypass
@@ -1023,6 +1147,263 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
+  void _showBonusQuestsDialog() {
+    String dialogError = "";
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final activeBonusQuests = _bonusQuests.where((b) {
+              return _completedQuestsCount >= b.unlockedByQuestOrder && !_completedBonusQuestKeys.contains(b.id);
+            }).toList();
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E2125),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Color(0xFFD4AF37), width: 1.8),
+              ),
+              title: const Row(
+                children: [
+                  Icon(Icons.workspace_premium, color: Color(0xFFFFD700), size: 22),
+                  SizedBox(width: 8),
+                  Text(
+                    "BONUSUPPDRAG",
+                    style: TextStyle(color: Color(0xFFE5C158), fontFamily: 'MedievalSharp', fontSize: 16),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 480,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (dialogError.isNotEmpty) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(8),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.2),
+                            border: Border.all(color: Colors.redAccent),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            dialogError,
+                            style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                      if (activeBonusQuests.isEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                          child: Center(
+                            child: Column(
+                              children: [
+                                Icon(Icons.shield_moon_outlined, size: 44, color: Colors.grey),
+                                SizedBox(height: 12),
+                                Text(
+                                  "No bonus quests available",
+                                  style: TextStyle(
+                                    fontFamily: 'MedievalSharp',
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFFE5C158),
+                                  ),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  "Nya bonusuppdrag aktiveras automatiskt när du klarar vanliga uppdrag!",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ] else ...[
+                        const Text(
+                          "Aktiva bonusuppdrag som kan göras när som helst:",
+                          style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'MedievalSharp'),
+                        ),
+                        const SizedBox(height: 12),
+                        ...activeBonusQuests.map((bonus) {
+                          final controller = _getBonusQuestController(bonus.id);
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 14),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF262C34),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        bonus.title,
+                                        style: const TextStyle(
+                                          fontFamily: 'MedievalSharp',
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFFE5C158),
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                                        border: Border.all(color: const Color(0xFFFFD700), width: 1),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        "+${bonus.rewardLevels} Lvl",
+                                        style: const TextStyle(
+                                          color: Color(0xFFFFD700),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (bonus.description.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    bonus.description,
+                                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                                  ),
+                                ],
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Container(
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          color: Colors.black,
+                                          border: Border.all(color: const Color(0xFF8B7355), width: 1.0),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: TextField(
+                                          controller: controller,
+                                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                                          decoration: const InputDecoration(
+                                            hintText: "Ange hemligt lösenord...",
+                                            hintStyle: TextStyle(color: Colors.grey, fontSize: 11),
+                                            border: InputBorder.none,
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                                            isDense: true,
+                                          ),
+                                          onSubmitted: (_) => _completeBonusQuest(bonus, controller.text, setDialogState, (err) => dialogError = err),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFFE5C158),
+                                        foregroundColor: Colors.black,
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      ),
+                                      onPressed: () => _completeBonusQuest(bonus, controller.text, setDialogState, (err) => dialogError = err),
+                                      child: const Text(
+                                        "Klara",
+                                        style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold, fontSize: 11),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Stäng", style: TextStyle(color: Colors.grey)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _completeBonusQuest(BonusQuestInfo bonus, String rawInput, StateSetter setDialogState, Function(String) setDialogError) {
+    if (_isAdmin) {
+      setDialogState(() {
+        setDialogError("Åskådarläge: Administratörer kan inte klara uppdrag.");
+      });
+      return;
+    }
+
+    if (bonus.checkPassword(rawInput)) {
+      final reward = bonus.rewardLevels;
+      final oldLevel = _level;
+      final newLevel = _level + reward;
+      setState(() {
+        _level = newLevel;
+        _completedBonusQuestKeys.add(bonus.id);
+      });
+      _saveLevel(newLevel);
+      _saveCompletedBonusQuests();
+
+      try {
+        FirebaseFirestore.instance.collection('quest_logs').add({
+          'timestamp': FieldValue.serverTimestamp(),
+          'quest_title': 'Bonus Quest: ${bonus.title} (+$reward levels)',
+          'old_level': oldLevel,
+          'new_level': newLevel,
+          'password_used': rawInput,
+        });
+      } catch (e) {
+        debugPrint("Failed to write bonus quest log to Firestore: $e");
+      }
+
+      _getBonusQuestController(bonus.id).clear();
+
+      if (oldLevel < _targetLevel && newLevel >= _targetLevel) {
+        AudioController.instance.playVictorySound();
+      } else {
+        AudioController.instance.playLevelUpSound();
+      }
+
+      setDialogState(() {
+        setDialogError("");
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF2E7D32),
+          content: Text(
+            "Bra jobbat! Du klarade bonusuppdraget '${bonus.title}' och fick +$reward levlar!",
+            style: const TextStyle(fontFamily: 'MedievalSharp', color: Colors.white),
+          ),
+        ),
+      );
+    } else {
+      setDialogState(() {
+        setDialogError("Fel lösenord för '${bonus.title}'! Försök igen.");
+      });
+    }
+  }
+
   void _resetCharacter() {
     setState(() {
       _level = 50; // Back to starting level 50
@@ -1031,6 +1412,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _bypassClicks = 0;
       _completedQuestsCount = 0;
       _completedSubQuestKeys.clear();
+      _completedBonusQuestKeys.clear();
       _usernameController.clear();
       _classController.clear();
       _raceController.clear();
@@ -1040,11 +1422,15 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       for (final c in _subQuestControllers.values) {
         c.clear();
       }
+      for (final c in _bonusQuestControllers.values) {
+        c.clear();
+      }
       _initCountdown();
     });
     _saveLevel(50);
     _saveCompletedQuests(0);
     _saveCompletedSubQuests();
+    _saveCompletedBonusQuests();
     _saveAdminState(false);
     _saveAdventureState(AdventureState.countdown);
     AudioController.instance.toggleMute(); // Reset audio toggle
@@ -2253,6 +2639,106 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           ],
                         ),
                       ),
+                      const SizedBox(height: 12),
+
+                      // BONUS QUESTS CONTAINER
+                      Builder(
+                        builder: (context) {
+                          final activeBonusQuestsList = _bonusQuests.where((b) {
+                            return _completedQuestsCount >= b.unlockedByQuestOrder && !_completedBonusQuestKeys.contains(b.id);
+                          }).toList();
+
+                          return Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF1E2836), Color(0xFF101622)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFF4FC3F7), width: 1.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF4FC3F7).withValues(alpha: 0.15),
+                                  blurRadius: 10,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 52,
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: const Color(0xFF81D4FA), width: 2),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.lightBlueAccent.withValues(alpha: 0.3),
+                                        blurRadius: 8,
+                                        spreadRadius: 1,
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Center(
+                                    child: Icon(Icons.workspace_premium, color: Color(0xFF81D4FA), size: 28),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        "BONUSUPPDRAG",
+                                        style: TextStyle(
+                                          fontFamily: 'MedievalSharp',
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF81D4FA),
+                                          letterSpacing: 1.0,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        activeBonusQuestsList.isNotEmpty
+                                            ? "${activeBonusQuestsList.length} aktiv(a) bonusuppdrag tillgängliga!"
+                                            : "Aktiveras när du klarat vanliga uppdrag",
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                ElevatedButton.icon(
+                                  onPressed: _showBonusQuestsDialog,
+                                  icon: const Icon(Icons.star, size: 16, color: Colors.black),
+                                  label: const Text(
+                                    "Do a bonus quest (50 levels)",
+                                    style: TextStyle(
+                                      fontFamily: 'MedievalSharp',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF81D4FA),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                       const SizedBox(height: 20),
 
                       // COMPLETED QUESTS LOG
@@ -2922,6 +3408,128 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
+  void _showBonusQuestAdminDialog({BonusQuestInfo? existingBonus}) {
+    final isEditing = existingBonus != null;
+    final titleController = TextEditingController(text: existingBonus?.title ?? '');
+    final descController = TextEditingController(text: existingBonus?.description ?? '');
+    final passwordController = TextEditingController(text: existingBonus?.password ?? '');
+    final rewardController = TextEditingController(text: (existingBonus?.rewardLevels ?? 50).toString());
+    final unlockedByOrderController = TextEditingController(text: (existingBonus?.unlockedByQuestOrder ?? 1).toString());
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2125),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFFD4AF37), width: 1.8),
+          ),
+          title: Text(
+            isEditing ? "Redigera Bonusuppdrag" : "Lägg till nytt Bonusuppdrag",
+            style: const TextStyle(color: Color(0xFFE5C158), fontFamily: 'MedievalSharp'),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _adminTextField("Titel", titleController),
+                const SizedBox(height: 10),
+                _adminTextField("Beskrivning", descController, maxLines: 2),
+                const SizedBox(height: 10),
+                _adminTextField("Lösenord", passwordController),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: _adminTextField("Belöning (levlar)", rewardController, isNumber: true)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _adminTextField("Låses upp efter Uppdrag #", unlockedByOrderController, isNumber: true)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Avbryt", style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE5C158),
+                foregroundColor: Colors.black,
+              ),
+              onPressed: () async {
+                final title = titleController.text.trim();
+                if (title.isEmpty) return;
+
+                final desc = descController.text.trim();
+                final password = passwordController.text.trim();
+                final reward = int.tryParse(rewardController.text.trim()) ?? 50;
+                final unlockedByOrder = int.tryParse(unlockedByOrderController.text.trim()) ?? 1;
+
+                final docId = isEditing ? existingBonus.id : "bonus_${DateTime.now().millisecondsSinceEpoch}";
+                final docRef = FirebaseFirestore.instance.collection('bonus_quests').doc(docId);
+
+                await docRef.set({
+                  'title': title,
+                  'description': desc,
+                  'password': password,
+                  'rewardLevels': reward,
+                  'unlockedByQuestOrder': unlockedByOrder,
+                }, SetOptions(merge: true));
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: const Color(0xFF2E7D32),
+                      content: Text(isEditing ? "Bonusuppdrag uppdaterat!" : "Nytt bonusuppdrag skapat!"),
+                    ),
+                  );
+                }
+              },
+              child: Text(isEditing ? "Spara" : "Skapa", style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _confirmDeleteBonusQuest(BonusQuestInfo bonus) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2125),
+          title: const Text("Ta bort Bonusuppdrag?", style: TextStyle(color: Color(0xFFFF5252), fontFamily: 'MedievalSharp')),
+          content: Text("Är du säker på att du vill ta bort bonusuppdraget '${bonus.title}'?"),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Avbryt")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD32F2F)),
+              onPressed: () async {
+                Navigator.pop(context);
+                await FirebaseFirestore.instance.collection('bonus_quests').doc(bonus.id).delete();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: const Color(0xFFD32F2F),
+                      content: Text("Bonusuppdraget '${bonus.title}' har tagits bort."),
+                    ),
+                  );
+                }
+              },
+              child: const Text("Ta bort", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildAdminScreen() {
     int totalQuestLevels = 0;
     for (final q in _quests) {
@@ -2935,10 +3543,15 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     int potionRewardPerBottle = _potionSecrets.isNotEmpty ? _potionSecrets.first.rewardLevels : 10;
     int totalPotionLevels = potionCount * potionRewardPerBottle;
 
-    final int maxAchievableLevel = 50 + totalQuestLevels + totalPotionLevels;
+    int totalBonusQuestLevels = 0;
+    for (final b in _bonusQuests) {
+      totalBonusQuestLevels += b.rewardLevels;
+    }
+
+    final int maxAchievableLevel = 50 + totalQuestLevels + totalPotionLevels + totalBonusQuestLevels;
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: const Color(0xFF0F1115),
         appBar: AppBar(
@@ -2962,6 +3575,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             tabs: [
               Tab(icon: Icon(Icons.assignment, size: 16), text: "Uppdrag"),
               Tab(icon: Icon(Icons.science, size: 16), text: "Potions"),
+              Tab(icon: Icon(Icons.military_tech, size: 16), text: "Bonusuppdrag"),
             ],
           ),
           actions: [
@@ -3024,7 +3638,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            "MAX LEVEL (UPPDRAG + 10 ST POTIONS):",
+                            "MAX LEVEL (UPPDRAG + POTIONS + BONUSUPPDRAG):",
                             style: TextStyle(
                               fontFamily: 'MedievalSharp',
                               fontSize: 10,
@@ -3047,7 +3661,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
-                                  "(Start 50 + $totalQuestLevels Lvl uppdrag + $totalPotionLevels Lvl från 10 st potions)",
+                                  "(Start 50 + $totalQuestLevels Lvl uppdrag + $totalPotionLevels Lvl potions + $totalBonusQuestLevels Lvl bonus)",
                                   style: const TextStyle(
                                     fontFamily: 'MedievalSharp',
                                     fontSize: 10,
@@ -3108,15 +3722,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           ),
                         ),
                         Expanded(
-                          child: ReorderableListView.builder(
+                          child: ListView.builder(
                             padding: const EdgeInsets.all(12),
                             itemCount: _quests.length,
-                            onReorder: (oldIndex, newIndex) {
-                              if (newIndex > oldIndex) {
-                                newIndex -= 1;
-                              }
-                              _reorderQuests(oldIndex, newIndex);
-                            },
                             itemBuilder: (context, index) {
                               final quest = _quests[index];
                               return Card(
@@ -3133,70 +3741,76 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFD4AF37).withValues(alpha: 0.2),
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(color: const Color(0xFFD4AF37), width: 1),
-                                            ),
-                                            child: Text(
-                                              "#${quest.order}",
-                                              style: const TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold, fontSize: 12),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              quest.title,
-                                              style: const TextStyle(
-                                                fontFamily: 'MedievalSharp',
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.white,
-                                              ),
+                                          Text(
+                                            "#${quest.order} - ${quest.title}",
+                                            style: const TextStyle(
+                                              fontFamily: 'MedievalSharp',
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFFE5C158),
                                             ),
                                           ),
                                           Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                             decoration: BoxDecoration(
-                                              color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
+                                              color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                                              border: Border.all(color: const Color(0xFFFFD700), width: 1),
                                               borderRadius: BorderRadius.circular(4),
                                             ),
                                             child: Text(
                                               "+${quest.rewardLevels} Lvl",
-                                              style: const TextStyle(color: Color(0xFF81C784), fontSize: 11, fontWeight: FontWeight.bold),
+                                              style: const TextStyle(
+                                                color: Color(0xFFFFD700),
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
                                           ),
                                         ],
                                       ),
-                                      if (quest.description.isNotEmpty) ...[
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          quest.description,
-                                          style: const TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        quest.description,
+                                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        "Lösenord: '${quest.password}'",
+                                        style: const TextStyle(color: Colors.grey, fontSize: 11, fontStyle: FontStyle.italic),
+                                      ),
+                                      if (quest.hasSubquests) ...[
+                                        const SizedBox(height: 8),
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black38,
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: const Color(0xFF8B7355).withValues(alpha: 0.5)),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                "Delmål (${quest.subquests.length} st):",
+                                                style: const TextStyle(fontSize: 11, color: Color(0xFFD4AF37), fontFamily: 'MedievalSharp'),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              ...quest.subquests.map(
+                                                (s) => Padding(
+                                                  padding: const EdgeInsets.only(bottom: 2),
+                                                  child: Text(
+                                                    "• ${s.title} (+${s.rewardLevels} Lvl, kod: '${s.password}')",
+                                                    style: const TextStyle(fontSize: 11, color: Colors.white70),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ],
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.key, size: 14, color: Color(0xFFD4AF37)),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            "Lösenord: ${quest.password.isEmpty ? '(inga, har delmål)' : quest.password}",
-                                            style: const TextStyle(color: Color(0xFFE5C158), fontSize: 12, fontFamily: 'MedievalSharp'),
-                                          ),
-                                          if (quest.hasSubquests) ...[
-                                            const SizedBox(width: 12),
-                                            Text(
-                                              "(${quest.subquests.length} delmål)",
-                                              style: const TextStyle(color: Colors.cyanAccent, fontSize: 11),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                      const Divider(color: Color(0xFF3E474F), height: 16),
+                                      const SizedBox(height: 10),
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.end,
                                         children: [
@@ -3338,6 +3952,134 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                       const SizedBox(width: 8),
                                       ElevatedButton.icon(
                                         onPressed: () => _confirmDeletePotion(potion),
+                                        icon: const Icon(Icons.delete, size: 16, color: Colors.white),
+                                        label: const Text("Ta bort", style: TextStyle(color: Colors.white, fontSize: 11)),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFFD32F2F),
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // Tab 3: Bonus Quests Manager
+                    Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          color: Colors.black45,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "Totalt ${_bonusQuests.length} bonusuppdrag i databasen",
+                                style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'MedievalSharp'),
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: () => _showBonusQuestAdminDialog(),
+                                icon: const Icon(Icons.add, size: 14, color: Colors.black),
+                                label: const Text("Nytt Bonusuppdrag", style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF4CAF50),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: _bonusQuests.length,
+                            itemBuilder: (context, index) {
+                              final bonus = _bonusQuests[index];
+                              return Card(
+                                key: ValueKey(bonus.id),
+                                color: const Color(0xFF1E2125),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  side: const BorderSide(color: Color(0xFF8B7355), width: 1.2),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: const Color(0xFF81D4FA), width: 1.5),
+                                        ),
+                                        child: const Center(
+                                          child: Icon(Icons.workspace_premium, color: Color(0xFF81D4FA), size: 20),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              bonus.title,
+                                              style: const TextStyle(
+                                                fontFamily: 'MedievalSharp',
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFFE5C158),
+                                              ),
+                                            ),
+                                            if (bonus.description.isNotEmpty) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                bonus.description,
+                                                style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                              ),
+                                            ],
+                                            const SizedBox(height: 4),
+                                            Wrap(
+                                              spacing: 12,
+                                              runSpacing: 4,
+                                              children: [
+                                                Text(
+                                                  "Lösenord: '${bonus.password}'",
+                                                  style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11),
+                                                ),
+                                                Text(
+                                                  "Belöning: +${bonus.rewardLevels} levlar",
+                                                  style: const TextStyle(color: Colors.grey, fontSize: 11),
+                                                ),
+                                                Text(
+                                                  "Låses upp efter Uppdrag #${bonus.unlockedByQuestOrder}",
+                                                  style: const TextStyle(color: Color(0xFF81D4FA), fontSize: 11),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      ElevatedButton.icon(
+                                        onPressed: () => _showBonusQuestAdminDialog(existingBonus: bonus),
+                                        icon: const Icon(Icons.edit, size: 16, color: Colors.black),
+                                        label: const Text("Redigera", style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold)),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFFE5C158),
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      ElevatedButton.icon(
+                                        onPressed: () => _confirmDeleteBonusQuest(bonus),
                                         icon: const Icon(Icons.delete, size: 16, color: Colors.white),
                                         label: const Text("Ta bort", style: TextStyle(color: Colors.white, fontSize: 11)),
                                         style: ElevatedButton.styleFrom(
