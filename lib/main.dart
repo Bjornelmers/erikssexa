@@ -49,7 +49,7 @@ class QuestInfo {
   final String title;
   final String password; // Exact lowercase check (or custom checker)
   final int rewardLevels;
-  final String hint;
+  final String description;
   final int order;
 
   QuestInfo({
@@ -57,7 +57,7 @@ class QuestInfo {
     required this.title,
     required this.password,
     required this.rewardLevels,
-    required this.hint,
+    required this.description,
     this.order = 0,
   });
 
@@ -68,7 +68,7 @@ class QuestInfo {
       title: data['title'] as String? ?? '',
       password: data['password'] as String? ?? '',
       rewardLevels: (data['rewardLevels'] ?? data['reward_levels'] as num?)?.toInt() ?? 10,
-      hint: data['hint'] as String? ?? '',
+      description: data['description'] as String? ?? data['hint'] as String? ?? '',
       order: (data['order'] as num?)?.toInt() ?? 0,
     );
   }
@@ -78,7 +78,7 @@ class QuestInfo {
       'title': title,
       'password': password,
       'rewardLevels': rewardLevels,
-      'hint': hint,
+      'description': description,
       'order': order,
     };
   }
@@ -177,7 +177,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       title: "Get dressed!",
       password: "svensexa!",
       rewardLevels: 10,
-      hint: "Quest Code: Svensexa!",
+      description: "Gör dig redo för äventyr genom att klä dig som en shaman! Dina vänner hjälper dig.",
       order: 1,
     ),
     QuestInfo(
@@ -185,7 +185,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       title: "Drink a Viking Mead!",
       password: "skål!",
       rewardLevels: 100,
-      hint: "What do Vikings say when raising a cup? (skål! / skal!)",
+      description: "Vad säger vikingar när de höjer sina bägare? Höj glaset och säg det magiska ordet!",
       order: 2,
     ),
     QuestInfo(
@@ -193,7 +193,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       title: "Defeat the Celtic dragon!",
       password: "excalibur",
       rewardLevels: 100,
-      hint: "The legendary sword of King Arthur",
+      description: "Legendariska svärdet från kung Artur. Besegra draken med dess namn!",
       order: 3,
     ),
     QuestInfo(
@@ -201,7 +201,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       title: "Gather the Groomsmen!",
       password: "fellowship",
       rewardLevels: 100,
-      hint: "The first book in the Lord of the Rings trilogy: 'The ... of the Ring'",
+      description: "Första boken i Sagan om Ringen-trilogin: 'The ... of the Ring'. Samla brudföljet!",
       order: 4,
     ),
     QuestInfo(
@@ -209,7 +209,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       title: "Patrol the Midgard Border",
       password: "odin",
       rewardLevels: 100,
-      hint: "The Allfather of Norse mythology (Repeatable Quest!)",
+      description: "Allfadern i den nordiska mytologin. (Upprepat quest!)",
       order: 5,
     ),
   ];
@@ -1484,16 +1484,44 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                 color: Colors.white,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 6),
                             Text(
-                              currentQuest.hint,
+                              currentQuest.description,
                               style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade400,
-                                fontStyle: FontStyle.italic,
+                                fontSize: 13,
+                                color: Colors.grey.shade300,
+                                height: 1.35,
+                                fontFamily: 'Metamorphous',
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 10),
+                            
+                            // Autofill password button for testers
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _questPasswordController.text = currentQuest.password;
+                                  });
+                                },
+                                icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
+                                label: const Text(
+                                  "Autofill password (tillfällig knapp för testare)",
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFFE5C158),
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
                             
                             // Password entry
                             Row(
