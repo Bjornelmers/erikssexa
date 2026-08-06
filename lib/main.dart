@@ -261,10 +261,33 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     QuestInfo(
       id: "quest_3",
       title: "Defeat the Celtic dragon!",
-      password: "excalibur",
-      rewardLevels: 100,
-      description: "Legendariska svärdet från kung Artur. Besegra draken med dess namn!",
+      password: "",
+      rewardLevels: 0,
+      description: "Samla din styrka och besegra den keltiska draken i tre utmanande delsteg!",
       order: 3,
+      subquests: [
+        SubQuestInfo(
+          id: "sub_3_1",
+          title: "Del 1: Hitta Drakens Gömma",
+          password: "excalibur",
+          description: "Sök upp hålan i de keltiska bergen. Vad heter det legendariska svärdet?",
+          rewardLevels: 30,
+        ),
+        SubQuestInfo(
+          id: "sub_3_2",
+          title: "Del 2: Avslöja Drakens Namn",
+          password: "draco",
+          description: "Draken vaknar! Säg drakens uråldriga namn för att försvaga den.",
+          rewardLevels: 35,
+        ),
+        SubQuestInfo(
+          id: "sub_3_3",
+          title: "Del 3: Banbrytande Nådestöt",
+          password: "valhalla",
+          description: "Utdela nådestöten genom att utropa vikingarnas krigsrop!",
+          rewardLevels: 35,
+        ),
+      ],
     ),
     QuestInfo(
       id: "quest_4",
@@ -347,13 +370,18 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         return;
       }
 
-      // Check if any existing documents in Firestore still use 'hint' or are missing 'description'
+      // Check if any existing documents in Firestore still use 'hint', missing 'description', or missing subquests for quest_3
       bool needsMigration = false;
       final batch = FirebaseFirestore.instance.batch();
 
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        if (data.containsKey('hint') || !data.containsKey('description')) {
+        
+        if (doc.id == 'quest_3' && (data['subquests'] == null || (data['subquests'] as List).isEmpty)) {
+          needsMigration = true;
+          final quest3Default = _defaultQuests.firstWhere((q) => q.id == 'quest_3');
+          batch.update(doc.reference, quest3Default.toMap());
+        } else if (data.containsKey('hint') || !data.containsKey('description')) {
           needsMigration = true;
           
           String defaultDesc = "";
