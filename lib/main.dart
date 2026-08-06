@@ -2832,6 +2832,15 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   Widget _buildAdminScreen() {
+    int totalQuestLevels = 0;
+    for (final q in _quests) {
+      totalQuestLevels += q.rewardLevels;
+      for (final sq in q.subquests) {
+        totalQuestLevels += sq.rewardLevels;
+      }
+    }
+    final int maxAchievableLevel = 50 + totalQuestLevels;
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F1115),
       appBar: AppBar(
@@ -2871,6 +2880,89 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       body: SafeArea(
         child: Column(
           children: [
+            // Max Level Summary Card at top of Admin View
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF2C2214), Color(0xFF16110A)],
+                ),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFFD700), width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFD700).withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.star_rounded, color: Color(0xFFFFD700), size: 28),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "MAX LEVEL OM ALLA UPPDRAG KLARAS:",
+                          style: TextStyle(
+                            fontFamily: 'MedievalSharp',
+                            fontSize: 11,
+                            color: Colors.grey,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Text(
+                              "Level $maxAchievableLevel",
+                              style: const TextStyle(
+                                fontFamily: 'Cinzel Decorative',
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFFFD700),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              "(Start 50 + $totalQuestLevels Lvl)",
+                              style: const TextStyle(
+                                fontFamily: 'MedievalSharp',
+                                fontSize: 12,
+                                color: Color(0xFF81C784),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (maxAchievableLevel >= 1337)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF4CAF50).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: const Color(0xFF4CAF50), width: 1),
+                      ),
+                      child: const Text(
+                        "GOAL REACHED! (≥1337)",
+                        style: TextStyle(color: Color(0xFF81C784), fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                ],
+              ),
+            ),
             Container(
               padding: const EdgeInsets.all(12),
               color: Colors.black45,
