@@ -97,6 +97,7 @@ class QuestInfo {
   final int rewardLevels;
   final String description;
   final int order;
+  final int requiredLevel;
   final List<SubQuestInfo> subquests;
 
   QuestInfo({
@@ -106,6 +107,7 @@ class QuestInfo {
     required this.rewardLevels,
     required this.description,
     this.order = 0,
+    this.requiredLevel = 0,
     this.subquests = const [],
   });
 
@@ -131,6 +133,7 @@ class QuestInfo {
       rewardLevels: (data['rewardLevels'] ?? data['reward_levels'] as num?)?.toInt() ?? 10,
       description: data['description'] as String? ?? '',
       order: (data['order'] as num?)?.toInt() ?? 0,
+      requiredLevel: (data['requiredLevel'] ?? data['required_level'] ?? data['minLevel'] as num?)?.toInt() ?? 0,
       subquests: subList,
     );
   }
@@ -142,6 +145,7 @@ class QuestInfo {
       'rewardLevels': rewardLevels,
       'description': description,
       'order': order,
+      'requiredLevel': requiredLevel,
       'subquests': subquests.map((s) => s.toMap()).toList(),
     };
   }
@@ -807,6 +811,13 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final currentQuestIndex = _completedQuestsCount.clamp(0, _quests.length - 1);
     final currentQuest = _quests[currentQuestIndex];
 
+    if (currentQuest.requiredLevel > 0 && _level < currentQuest.requiredLevel) {
+      setState(() {
+        _questError = "🔒 Låst uppdrag! Du måste nå Level ${currentQuest.requiredLevel} för att klara detta uppdrag.";
+      });
+      return;
+    }
+
     if (currentQuest.checkPassword(inputPassword)) {
       final oldLevel = _level;
       final newLevel = _level + currentQuest.rewardLevels;
@@ -859,6 +870,19 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           content: Text(
             "Åskådarläge: Administatörer kan inte klara delmål.",
             style: TextStyle(fontFamily: 'MedievalSharp', color: Colors.white),
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (quest.requiredLevel > 0 && _level < quest.requiredLevel) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFFC62828),
+          content: Text(
+            "🔒 Låst uppdrag: Du måste nå Level ${quest.requiredLevel} för att klara delmål.",
+            style: const TextStyle(fontFamily: 'MedievalSharp', color: Colors.white),
           ),
         ),
       );
@@ -2079,6 +2103,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final currentQuest = _quests[currentQuestIndex];
     final bool allMainQuestsFinished = _completedQuestsCount >= _quests.length - 1;
 
+    final bool isQuestLocked = currentQuest.requiredLevel > 0 && _level < currentQuest.requiredLevel;
+
     return Scaffold(
       body: Stack(
         children: [
@@ -2404,21 +2430,49 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                     letterSpacing: 0.8,
                                   ),
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFD4AF37).withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: const Color(0xFFD4AF37), width: 0.8),
-                                  ),
-                                  child: Text(
-                                    "+${currentQuest.rewardLevels} Levels",
-                                    style: const TextStyle(
-                                      color: Color(0xFFFFD700),
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
+                                Row(
+                                  children: [
+                                    if (currentQuest.requiredLevel > 0) ...[
+                                      Container(
+                                        margin: const EdgeInsets.only(right: 6),
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: isQuestLocked
+                                              ? const Color(0xFFD32F2F).withValues(alpha: 0.2)
+                                              : const Color(0xFF4CAF50).withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: isQuestLocked ? const Color(0xFFEF5350) : const Color(0xFF81C784),
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          isQuestLocked ? "🔒 Kräver Lvl ${currentQuest.requiredLevel}" : "🔓 Lvl ${currentQuest.requiredLevel} nådd",
+                                          style: TextStyle(
+                                            color: isQuestLocked ? const Color(0xFFFF8A80) : const Color(0xFF81C784),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFD4AF37).withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: const Color(0xFFD4AF37), width: 0.8),
+                                      ),
+                                      child: Text(
+                                        "+${currentQuest.rewardLevels} Levels",
+                                        style: const TextStyle(
+                                          color: Color(0xFFFFD700),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -2444,8 +2498,47 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             ),
                             const SizedBox(height: 10),
                             
-                            // Display subquests UI if quest has subquests, otherwise normal single quest UI
-                            if (currentQuest.hasSubquests)
+                            if (isQuestLocked) ...[
+                              Container(
+                                margin: const EdgeInsets.only(top: 6),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF3E2723).withValues(alpha: 0.8),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFFFB74D), width: 1.5),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.lock, color: Color(0xFFFFB74D), size: 28),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            "LÅST UPPDRAG (Kräver Level ${currentQuest.requiredLevel})",
+                                            style: const TextStyle(
+                                              fontFamily: 'MedievalSharp',
+                                              fontSize: 13,
+                                              color: Color(0xFFFFB74D),
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            "Du behöver nå Level ${currentQuest.requiredLevel} för att påbörja detta uppdrag (du är på Level $_level). Drick potions eller slutför bonusuppdrag för att samla mer level!",
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ] else if (currentQuest.hasSubquests)
                               _buildSubquestsList(currentQuest)
                             else ...[
                               // Autofill password button for testers
@@ -3033,6 +3126,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final passwordController = TextEditingController(text: existingQuest?.password ?? '');
     final rewardController = TextEditingController(text: (existingQuest?.rewardLevels ?? 10).toString());
     final orderController = TextEditingController(text: (existingQuest?.order ?? (_quests.length + 1)).toString());
+    final requiredLevelController = TextEditingController(text: (existingQuest?.requiredLevel ?? 0).toString());
 
     List<SubQuestInfo> tempSubquests = existingQuest != null ? List.from(existingQuest.subquests) : [];
 
@@ -3065,8 +3159,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     Row(
                       children: [
                         Expanded(child: _adminTextField("Belöning (levlar)", rewardController, isNumber: true)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _adminTextField("Ordning (1, 2, ...)", orderController, isNumber: true)),
+                        const SizedBox(width: 8),
+                        Expanded(child: _adminTextField("Ordning", orderController, isNumber: true)),
+                        const SizedBox(width: 8),
+                        Expanded(child: _adminTextField("Krävd Level (0=inget)", requiredLevelController, isNumber: true)),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -3157,6 +3253,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     final desc = descController.text.trim();
                     final reward = int.tryParse(rewardController.text.trim()) ?? 10;
                     final order = int.tryParse(orderController.text.trim()) ?? (_quests.length + 1);
+                    final requiredLevel = int.tryParse(requiredLevelController.text.trim()) ?? 0;
 
                     final docId = isEditing ? existingQuest.id : "quest_${DateTime.now().millisecondsSinceEpoch}";
                     final docRef = FirebaseFirestore.instance.collection('quests').doc(docId);
@@ -3167,6 +3264,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       'description': desc,
                       'rewardLevels': reward,
                       'order': order,
+                      'requiredLevel': requiredLevel,
                       'subquests': tempSubquests.map((s) => s.toMap()).toList(),
                     };
 
@@ -3743,30 +3841,55 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Text(
-                                            "#${quest.order} - ${quest.title}",
-                                            style: const TextStyle(
-                                              fontFamily: 'MedievalSharp',
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFFE5C158),
-                                            ),
-                                          ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFFFD700).withValues(alpha: 0.15),
-                                              border: Border.all(color: const Color(0xFFFFD700), width: 1),
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
+                                          Expanded(
                                             child: Text(
-                                              "+${quest.rewardLevels} Lvl",
+                                              "#${quest.order} - ${quest.title}",
                                               style: const TextStyle(
-                                                color: Color(0xFFFFD700),
-                                                fontSize: 11,
+                                                fontFamily: 'MedievalSharp',
+                                                fontSize: 16,
                                                 fontWeight: FontWeight.bold,
+                                                color: Color(0xFFE5C158),
                                               ),
                                             ),
+                                          ),
+                                          Row(
+                                            children: [
+                                              if (quest.requiredLevel > 0) ...[
+                                                Container(
+                                                  margin: const EdgeInsets.only(right: 6),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFFFF9800).withValues(alpha: 0.15),
+                                                    border: Border.all(color: const Color(0xFFFF9800), width: 1),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Text(
+                                                    "🔒 Kräver Lvl ${quest.requiredLevel}",
+                                                    style: const TextStyle(
+                                                      color: Color(0xFFFFB74D),
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                                                  border: Border.all(color: const Color(0xFFFFD700), width: 1),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: Text(
+                                                  "+${quest.rewardLevels} Lvl",
+                                                  style: const TextStyle(
+                                                    color: Color(0xFFFFD700),
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),
