@@ -421,6 +421,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // Active potion secrets list dynamically populated from Firestore
   late List<PotionSecretInfo> _potionSecrets = List.from(_defaultPotionSecrets);
+  Set<String> _usedPotionSecretKeys = {};
 
   // Default fallback bonus quests
   static final List<BonusQuestInfo> _defaultBonusQuests = [
@@ -685,6 +686,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final completedQuests = prefs.getInt('completed_quests_count') ?? 0;
     final completedSubQuestsList = prefs.getStringList('completed_subquests') ?? [];
     final completedBonusQuestsList = prefs.getStringList('completed_bonus_quests') ?? [];
+    final usedPotionSecretsList = prefs.getStringList('used_potion_secrets') ?? [];
     final shownVideosList = prefs.getStringList('shown_level_videos') ?? [];
     
     AdventureState savedState = AdventureState.values[savedStateIndex];
@@ -703,6 +705,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         _completedQuestsCount = completedQuests;
         _completedSubQuestKeys = completedSubQuestsList.toSet();
         _completedBonusQuestKeys = completedBonusQuestsList.toSet();
+        _usedPotionSecretKeys = usedPotionSecretsList.toSet();
         _shownLevelVideos = shownVideosList.map((e) => int.tryParse(e) ?? 0).where((e) => e > 0).toSet();
         _isLoading = false;
       });
@@ -752,6 +755,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   Future<void> _saveCompletedBonusQuests() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('completed_bonus_quests', _completedBonusQuestKeys.toList());
+  }
+
+  Future<void> _saveUsedPotionSecrets() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('used_potion_secrets', _usedPotionSecretKeys.toList());
   }
 
   Future<void> _saveShownLevelVideos() async {
@@ -1276,9 +1284,15 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     child: TextButton.icon(
                       onPressed: () {
                         setDialogState(() {
-                          _potionPasswordController.text = _potionSecrets.isNotEmpty
-                              ? _potionSecrets.first.secret
-                              : "Potion secret message";
+                          final unusedSecret = _potionSecrets.firstWhere(
+                            (s) {
+                              final sKey = s.id.isNotEmpty ? s.id : s.secret.trim().toLowerCase();
+                              final norm = s.secret.trim().toLowerCase();
+                              return !_usedPotionSecretKeys.contains(sKey) && !_usedPotionSecretKeys.contains(norm);
+                            },
+                            orElse: () => _potionSecrets.isNotEmpty ? _potionSecrets.first : PotionSecretInfo(secret: "Potion secret message"),
+                          );
+                          _potionPasswordController.text = unusedSecret.secret;
                         });
                       },
                       icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
@@ -1371,6 +1385,22 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     }
 
                     if (matchedSecret != null) {
+                      final secretKey = matchedSecret.id.isNotEmpty ? matchedSecret.id : matchedSecret.secret.trim().toLowerCase();
+                      final normalizedSecret = matchedSecret.secret.trim().toLowerCase();
+
+                      if (_usedPotionSecretKeys.contains(secretKey) || _usedPotionSecretKeys.contains(normalizedSecret)) {
+                        setDialogState(() {
+                          dialogError = "Du har redan använt detta hemliga meddelande!";
+                        });
+                        return;
+                      }
+
+                      _usedPotionSecretKeys.add(secretKey);
+                      if (normalizedSecret.isNotEmpty) {
+                        _usedPotionSecretKeys.add(normalizedSecret);
+                      }
+                      _saveUsedPotionSecrets();
+
                       final reward = matchedSecret.rewardLevels;
                       final oldLevel = _level;
                       final newLevel = _level + reward;
@@ -1696,6 +1726,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _completedQuestsCount = 0;
       _completedSubQuestKeys.clear();
       _completedBonusQuestKeys.clear();
+      _usedPotionSecretKeys.clear();
       _usernameController.clear();
       _classController.clear();
       _raceController.clear();
@@ -1714,6 +1745,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _saveCompletedQuests(0);
     _saveCompletedSubQuests();
     _saveCompletedBonusQuests();
+    _saveUsedPotionSecrets();
     _saveAdminState(false);
     _saveAdventureState(AdventureState.countdown);
     AudioController.instance.toggleMute(); // Reset audio toggle
