@@ -967,7 +967,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _showCompletedQuestDetails(QuestInfo q) {
-    final bool hasVideoUnlocked = _shownLevelVideos.contains(500) || _level >= 500;
+    final bool hasVideoUnlocked = _shownLevelVideos.contains(500) && _level >= 500;
 
     showDialog(
       context: context,
@@ -1822,6 +1822,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _completedSubQuestKeys.clear();
       _completedBonusQuestKeys.clear();
       _usedPotionSecretKeys.clear();
+      _shownLevelVideos.clear();
       _usernameController.clear();
       _classController.clear();
       _raceController.clear();
@@ -1841,6 +1842,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _saveCompletedSubQuests();
     _saveCompletedBonusQuests();
     _saveUsedPotionSecrets();
+    _saveShownLevelVideos();
     _saveAdminState(false, isSuperAdmin: false);
     _saveAdventureState(AdventureState.countdown);
     AudioController.instance.toggleMute(); // Reset audio toggle
@@ -3305,7 +3307,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                               "COMPLETED QUESTS (Klicka för info/video)",
                               style: TextStyle(color: Color(0xFF8B7355), fontSize: 11, fontWeight: FontWeight.bold),
                             ),
-                            if (_shownLevelVideos.contains(500) || _level >= 500)
+                            if (_shownLevelVideos.contains(500) && _level >= 500)
                               TextButton.icon(
                                 onPressed: () {
                                   _showLevelVideoModal('assets/videos/ding500.mp4', 'LEVEL 500 - REPLAY');
