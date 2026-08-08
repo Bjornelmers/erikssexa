@@ -32,6 +32,11 @@ int _parseInt(dynamic val, [int fallback = 0]) {
   return fallback;
 }
 
+Map<String, dynamic> _toMapStringDynamic(dynamic data) {
+  if (data == null || data is! Map) return <String, dynamic>{};
+  return Map<String, dynamic>.from(data);
+}
+
 class DAoCLevelCounterApp extends StatelessWidget {
   const DAoCLevelCounterApp({super.key});
 
@@ -71,12 +76,13 @@ class SubQuestInfo {
     this.rewardLevels = 0,
   });
 
-  factory SubQuestInfo.fromMap(Map<String, dynamic> map, [int index = 0]) {
+  factory SubQuestInfo.fromMap(dynamic rawMap, [int index = 0]) {
+    final map = _toMapStringDynamic(rawMap);
     return SubQuestInfo(
-      id: map['id'] as String? ?? 'sub_$index',
-      title: map['title'] as String? ?? '',
-      password: map['password'] as String? ?? '',
-      description: map['description'] as String? ?? map['hint'] as String? ?? '',
+      id: map['id']?.toString() ?? 'sub_$index',
+      title: map['title']?.toString() ?? '',
+      password: map['password']?.toString() ?? '',
+      description: map['description']?.toString() ?? map['hint']?.toString() ?? '',
       rewardLevels: _parseInt(map['rewardLevels'] ?? map['reward_levels'], 0),
     );
   }
@@ -129,25 +135,25 @@ class QuestInfo {
   bool get hasSubquests => subquests.isNotEmpty;
 
   factory QuestInfo.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
+    final data = _toMapStringDynamic(doc.data());
 
     List<SubQuestInfo> subList = [];
-    if (data['subquests'] != null && data['subquests'] is List) {
-      final rawList = data['subquests'] as List;
-      for (int i = 0; i < rawList.length; i++) {
-        if (rawList[i] is Map) {
-          subList.add(SubQuestInfo.fromMap(rawList[i] as Map<String, dynamic>, i));
+    final rawSubquests = data['subquests'];
+    if (rawSubquests is List) {
+      for (int i = 0; i < rawSubquests.length; i++) {
+        if (rawSubquests[i] != null) {
+          subList.add(SubQuestInfo.fromMap(rawSubquests[i], i));
         }
       }
     }
 
     return QuestInfo(
       id: doc.id,
-      title: data['title'] as String? ?? '',
-      password: data['password'] as String? ?? '',
+      title: data['title']?.toString() ?? '',
+      password: data['password']?.toString() ?? '',
       rewardLevels: _parseInt(data['rewardLevels'] ?? data['reward_levels'], 10),
-      description: data['description'] as String? ?? '',
-      completionMessage: data['completionMessage'] as String? ?? data['completion_message'] as String? ?? '',
+      description: data['description']?.toString() ?? '',
+      completionMessage: data['completionMessage']?.toString() ?? data['completion_message']?.toString() ?? '',
       order: _parseInt(data['order'], 0),
       requiredLevel: _parseInt(data['requiredLevel'] ?? data['required_level'] ?? data['minLevel'], 0),
       subquests: subList,
@@ -192,10 +198,10 @@ class PotionSecretInfo {
   });
 
   factory PotionSecretInfo.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
+    final data = _toMapStringDynamic(doc.data());
     return PotionSecretInfo(
       id: doc.id,
-      secret: data['secret'] as String? ?? '',
+      secret: data['secret']?.toString() ?? '',
       rewardLevels: _parseInt(data['rewardLevels'] ?? data['reward_levels'], 10),
     );
   }
@@ -240,12 +246,12 @@ class BonusQuestInfo {
   });
 
   factory BonusQuestInfo.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
+    final data = _toMapStringDynamic(doc.data());
     return BonusQuestInfo(
       id: doc.id,
-      title: data['title'] as String? ?? '',
-      password: data['password'] as String? ?? '',
-      description: data['description'] as String? ?? '',
+      title: data['title']?.toString() ?? '',
+      password: data['password']?.toString() ?? '',
+      description: data['description']?.toString() ?? '',
       rewardLevels: _parseInt(data['rewardLevels'] ?? data['reward_levels'], 50),
       unlockedByQuestOrder: _parseInt(data['unlockedByQuestOrder'] ?? data['unlocked_by_quest_order'], 1),
     );
@@ -511,9 +517,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       final batch = FirebaseFirestore.instance.batch();
 
       for (final doc in snapshot.docs) {
-        final data = doc.data();
+        final data = _toMapStringDynamic(doc.data());
+        final subq = data['subquests'];
         
-        if (doc.id == 'quest_3' && (data['subquests'] == null || (data['subquests'] as List).isEmpty)) {
+        if (doc.id == 'quest_3' && (subq == null || subq is! List || subq.isEmpty)) {
           needsMigration = true;
           final quest3Default = _defaultQuests.firstWhere((q) => q.id == 'quest_3');
           batch.update(doc.reference, quest3Default.toMap());
