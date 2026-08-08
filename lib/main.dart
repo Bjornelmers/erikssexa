@@ -2898,198 +2898,263 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       ],
                       const SizedBox(height: 16),
 
-                      // POTION DRINK CONTAINER
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF2C2214), Color(0xFF16110A)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFE5C158), width: 1.5),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFFFD700).withValues(alpha: 0.15),
-                              blurRadius: 10,
-                              spreadRadius: 1,
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 52,
-                              height: 52,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0xFFFFD700), width: 2),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.amber.withValues(alpha: 0.3),
-                                    blurRadius: 8,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(26),
-                                child: Image.asset(
-                                  'assets/images/potion.jpg',
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      const Icon(Icons.science, color: Color(0xFFFFD700), size: 26),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "MAGIC POTION",
-                                    style: TextStyle(
-                                      fontFamily: 'MedievalSharp',
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFFE5C158),
-                                      letterSpacing: 1.0,
-                                    ),
-                                  ),
-                                  SizedBox(height: 2),
-                                  Text(
-                                    "+10 levels per potion bottle!",
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            ElevatedButton.icon(
-                              onPressed: _showDrinkPotionDialog,
-                              icon: const Icon(Icons.local_drink, size: 16, color: Colors.black),
-                              label: const Text(
-                                "Drink potion (10 levels)",
-                                style: TextStyle(
-                                  fontFamily: 'MedievalSharp',
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black,
-                                ),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFFFFD700),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // BONUS QUESTS CONTAINER
-                      Builder(
-                        builder: (context) {
+                      // POTIONS & BONUS QUESTS SECTION (RESPONSIVE GRID / COLUMN)
+                      LayoutBuilder(
+                        builder: (context, constraints) {
                           final activeBonusQuestsList = _bonusQuests.where((b) {
                             return _completedQuestsCount >= b.unlockedByQuestOrder && !_completedBonusQuestKeys.contains(b.id);
                           }).toList();
 
-                          return Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF1E2836), Color(0xFF101622)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFF4FC3F7), width: 1.5),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF4FC3F7).withValues(alpha: 0.15),
-                                  blurRadius: 10,
-                                  spreadRadius: 1,
+                          Widget buildPotionCard() {
+                            return Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF2C2214), Color(0xFF16110A)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
                                 ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 52,
-                                  height: 52,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: const Color(0xFF81D4FA), width: 2),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.lightBlueAccent.withValues(alpha: 0.3),
-                                        blurRadius: 8,
-                                        spreadRadius: 1,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFE5C158), width: 1.5),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                                    blurRadius: 10,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 46,
+                                        height: 46,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: const Color(0xFFFFD700), width: 2),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.amber.withValues(alpha: 0.3),
+                                              blurRadius: 8,
+                                              spreadRadius: 1,
+                                            ),
+                                          ],
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(23),
+                                          child: Image.asset(
+                                            'assets/images/potion.jpg',
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) =>
+                                                const Icon(Icons.science, color: Color(0xFFFFD700), size: 24),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      const Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              "MAGIC POTION",
+                                              style: TextStyle(
+                                                fontFamily: 'MedievalSharp',
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFFE5C158),
+                                                letterSpacing: 1.0,
+                                              ),
+                                            ),
+                                            SizedBox(height: 2),
+                                            Text(
+                                              "+10 levlar per potionflaska!",
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.white70,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ],
                                   ),
-                                  child: const Center(
-                                    child: Icon(Icons.workspace_premium, color: Color(0xFF81D4FA), size: 28),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        "BONUSUPPDRAG",
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
+                                      onPressed: _showDrinkPotionDialog,
+                                      icon: const Icon(Icons.local_drink, size: 16, color: Colors.black),
+                                      label: const Text(
+                                        "Drick potion (+10 levlar)",
                                         style: TextStyle(
                                           fontFamily: 'MedievalSharp',
-                                          fontSize: 13,
+                                          fontSize: 12,
                                           fontWeight: FontWeight.bold,
-                                          color: Color(0xFF81D4FA),
-                                          letterSpacing: 1.0,
+                                          color: Colors.black,
                                         ),
                                       ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        activeBonusQuestsList.isNotEmpty
-                                            ? "${activeBonusQuestsList.length} aktiv(a) bonusuppdrag tillgängliga!"
-                                            : "Aktiveras när du klarat vanliga uppdrag",
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.white70,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFFFFD700),
+                                        padding: const EdgeInsets.symmetric(vertical: 10),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          Widget buildBonusQuestCard() {
+                            final hasActive = activeBonusQuestsList.isNotEmpty;
+                            return Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF1E2836), Color(0xFF101622)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFF4FC3F7), width: 1.5),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF4FC3F7).withValues(alpha: 0.15),
+                                    blurRadius: 10,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 46,
+                                        height: 46,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: const Color(0xFF81D4FA), width: 2),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.lightBlueAccent.withValues(alpha: 0.3),
+                                              blurRadius: 8,
+                                              spreadRadius: 1,
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Center(
+                                          child: Icon(Icons.workspace_premium, color: Color(0xFF81D4FA), size: 26),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                const Text(
+                                                  "BONUSUPPDRAG",
+                                                  style: TextStyle(
+                                                    fontFamily: 'MedievalSharp',
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Color(0xFF81D4FA),
+                                                    letterSpacing: 1.0,
+                                                  ),
+                                                ),
+                                                if (hasActive) ...[
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFF4FC3F7).withValues(alpha: 0.2),
+                                                      borderRadius: BorderRadius.circular(4),
+                                                      border: Border.all(color: const Color(0xFF4FC3F7), width: 0.8),
+                                                    ),
+                                                    child: Text(
+                                                      "${activeBonusQuestsList.length} AKTIV",
+                                                      style: const TextStyle(
+                                                        color: Color(0xFF81D4FA),
+                                                        fontSize: 9,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              hasActive
+                                                  ? "${activeBonusQuestsList.length} aktiv(a) bonusuppdrag tillgängliga!"
+                                                  : "Aktiveras när du klarat vanliga uppdrag",
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.white70,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-                                ElevatedButton.icon(
-                                  onPressed: _showBonusQuestsDialog,
-                                  icon: const Icon(Icons.star, size: 16, color: Colors.black),
-                                  label: const Text(
-                                    "Do a bonus quest (50 levels)",
-                                    style: TextStyle(
-                                      fontFamily: 'MedievalSharp',
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.black,
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
+                                      onPressed: _showBonusQuestsDialog,
+                                      icon: const Icon(Icons.star, size: 16, color: Colors.black),
+                                      label: const Text(
+                                        "Gör bonusuppdrag (+50 levlar)",
+                                        style: TextStyle(
+                                          fontFamily: 'MedievalSharp',
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.black,
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF81D4FA),
+                                        padding: const EdgeInsets.symmetric(vertical: 10),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF81D4FA),
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                  ),
-                                ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          if (constraints.maxWidth >= 560) {
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: buildPotionCard()),
+                                const SizedBox(width: 12),
+                                Expanded(child: buildBonusQuestCard()),
                               ],
-                            ),
-                          );
+                            );
+                          } else {
+                            return Column(
+                              children: [
+                                buildPotionCard(),
+                                const SizedBox(height: 12),
+                                buildBonusQuestCard(),
+                              ],
+                            );
+                          }
                         },
                       ),
                       const SizedBox(height: 20),
