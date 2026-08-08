@@ -289,6 +289,7 @@ class MainAdventureManager extends StatefulWidget {
 class _MainAdventureManagerState extends State<MainAdventureManager> {
   AdventureState _state = AdventureState.countdown;
   bool _isAdmin = false;
+  bool _isSuperAdmin = false;
   int _level = 50; // DAoC character starts at max level 50
   final int _targetLevel = 1337;
   bool _isLoading = true;
@@ -297,6 +298,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   StreamSubscription? _questsSubscription;
   StreamSubscription? _potionSecretsSubscription;
   StreamSubscription? _bonusQuestsSubscription;
+  StreamSubscription? _adminUsersSubscription;
+
+  List<String> _adminUsernames = ['hetelmers hot', 'spellhound'];
 
   // Countdown target: August 15, 2026, 09:00 AM
   final DateTime _targetDate = DateTime(2026, 8, 15, 9, 0);
@@ -468,6 +472,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _listenToQuests();
     _listenToPotionSecrets();
     _listenToBonusQuests();
+    _listenToAdminUsers();
   }
 
   @override
@@ -478,6 +483,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _questsSubscription?.cancel();
     _potionSecretsSubscription?.cancel();
     _bonusQuestsSubscription?.cancel();
+    _adminUsersSubscription?.cancel();
     _usernameController.dispose();
     _classController.dispose();
     _raceController.dispose();
@@ -644,6 +650,53 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     });
   }
 
+  // Listen to admin users from Firestore database
+  void _listenToAdminUsers() {
+    final adminRef = FirebaseFirestore.instance.collection('admin_users');
+
+    _adminUsersSubscription = adminRef.snapshots().listen((snapshot) async {
+      if (snapshot.docs.isEmpty) {
+        debugPrint("Firestore 'admin_users' collection is empty. Seeding defaults...");
+        try {
+          final batch = FirebaseFirestore.instance.batch();
+          final defaultAdmins = ['hetelmers hot', 'spellhound'];
+          for (final username in defaultAdmins) {
+            final docId = username.replaceAll(' ', '_');
+            batch.set(adminRef.doc(docId), {
+              'username': username,
+              'role': username == 'hetelmers hot' ? 'superadmin' : 'admin',
+              'created_at': FieldValue.serverTimestamp(),
+            });
+          }
+          await batch.commit();
+        } catch (e) {
+          debugPrint("Failed to seed default admin users: $e");
+        }
+        return;
+      }
+
+      final loadedAdmins = snapshot.docs
+          .map((doc) => (doc.data()['username']?.toString() ?? doc.id).trim().toLowerCase())
+          .where((u) => u.isNotEmpty)
+          .toList();
+
+      if (!loadedAdmins.contains('hetelmers hot')) {
+        loadedAdmins.insert(0, 'hetelmers hot');
+      }
+      if (!loadedAdmins.contains('spellhound')) {
+        loadedAdmins.add('spellhound');
+      }
+
+      if (mounted) {
+        setState(() {
+          _adminUsernames = loadedAdmins.toSet().toList();
+        });
+      }
+    }, onError: (error) {
+      debugPrint("Error listening to Firestore admin users: $error");
+    });
+  }
+
   // Focus and dummy node to prevent compilation warnings
   final FocusNode _inputFocusNode = FocusNode();
   final TextEditingController _levelInputController = TextEditingController();
@@ -683,6 +736,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final level = prefs.getInt('aragnoz_level') ?? 50;
     final savedStateIndex = prefs.getInt('adventure_state') ?? AdventureState.countdown.index;
     final isAdmin = prefs.getBool('is_admin') ?? false;
+    final isSuperAdmin = prefs.getBool('is_super_admin') ?? false;
     final completedQuests = prefs.getInt('completed_quests_count') ?? 0;
     final completedSubQuestsList = prefs.getStringList('completed_subquests') ?? [];
     final completedBonusQuestsList = prefs.getStringList('completed_bonus_quests') ?? [];
@@ -702,6 +756,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         _level = level;
         _state = savedState;
         _isAdmin = isAdmin;
+        _isSuperAdmin = isSuperAdmin;
         _completedQuestsCount = completedQuests;
         _completedSubQuestKeys = completedSubQuestsList.toSet();
         _completedBonusQuestKeys = completedBonusQuestsList.toSet();
@@ -724,9 +779,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     }
   }
 
-  Future<void> _saveAdminState(bool isAdmin) async {
+  Future<void> _saveAdminState(bool isAdmin, {bool isSuperAdmin = false}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_admin', isAdmin);
+    await prefs.setBool('is_super_admin', isSuperAdmin);
   }
 
   Future<void> _saveAdventureState(AdventureState state) async {
@@ -996,16 +1052,20 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final cls = _classController.text.trim().toLowerCase();
     final rc = _raceController.text.trim().toLowerCase();
 
-    final isAdminUser = (user == 'hetelmers hot' || user == 'spellhound');
+    final isSuperAdminUser = (user == 'hetelmers hot');
+    final isAdminUser = isSuperAdminUser ||
+        _adminUsernames.map((u) => u.toLowerCase().trim()).contains(user) ||
+        user == 'spellhound';
     final isAragnozUser = (user == 'aragnoz' && cls == 'shaman' && rc == 'troll');
 
     if (isAdminUser || isAragnozUser) {
       setState(() {
         _loginError = "";
         _isAdmin = isAdminUser;
+        _isSuperAdmin = isSuperAdminUser;
         _state = AdventureState.intro;
       });
-      _saveAdminState(isAdminUser);
+      _saveAdminState(isAdminUser, isSuperAdmin: isSuperAdminUser);
       _saveAdventureState(AdventureState.intro);
       AudioController.instance.playLevelUpSound();
       _startMusic(); // Ensure music plays
@@ -1722,6 +1782,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _level = 50; // Back to starting level 50
       _state = AdventureState.countdown;
       _isAdmin = false;
+      _isSuperAdmin = false;
       _bypassClicks = 0;
       _completedQuestsCount = 0;
       _completedSubQuestKeys.clear();
@@ -1746,7 +1807,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _saveCompletedSubQuests();
     _saveCompletedBonusQuests();
     _saveUsedPotionSecrets();
-    _saveAdminState(false);
+    _saveAdminState(false, isSuperAdmin: false);
     _saveAdventureState(AdventureState.countdown);
     AudioController.instance.toggleMute(); // Reset audio toggle
   }
@@ -2454,15 +2515,21 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.admin_panel_settings, color: Color(0xFFE1BEE7), size: 22),
+                              Icon(
+                                _isSuperAdmin ? Icons.workspace_premium : Icons.admin_panel_settings,
+                                color: _isSuperAdmin ? const Color(0xFFFFD700) : const Color(0xFFE1BEE7),
+                                size: 22,
+                              ),
                               const SizedBox(width: 8),
-                              const Expanded(
+                              Expanded(
                                 child: Text(
-                                  "ÅSKÅDAR- / ADMINLÄGE\n(Kan se status, men ej klara uppdrag/potions)",
+                                  _isSuperAdmin
+                                      ? "SUPERADMINLÄGE\n(Kan se status & hantera admins/uppdrag/potions)"
+                                      : "ÅSKÅDAR- / ADMINLÄGE\n(Kan se status, men ej klara uppdrag/potions)",
                                   style: TextStyle(
                                     fontFamily: 'MedievalSharp',
                                     fontSize: 11,
-                                    color: Color(0xFFE1BEE7),
+                                    color: _isSuperAdmin ? const Color(0xFFFFD700) : const Color(0xFFE1BEE7),
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -2474,9 +2541,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                   });
                                 },
                                 icon: const Icon(Icons.settings, size: 14, color: Colors.black),
-                                label: const Text(
-                                  "ADMIN-MENY",
-                                  style: TextStyle(
+                                label: Text(
+                                  _isSuperAdmin ? "SUPERADMIN-MENY" : "ADMIN-MENY",
+                                  style: const TextStyle(
                                     fontFamily: 'MedievalSharp',
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
@@ -4035,6 +4102,288 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
+  void _showAddAdminDialog() {
+    final TextEditingController newAdminController = TextEditingController();
+    String dialogError = "";
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E2125),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Color(0xFFE5C158), width: 1.5),
+              ),
+              title: const Row(
+                children: [
+                  Icon(Icons.person_add, color: Color(0xFFE5C158), size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    "Lägg till ny Admin",
+                    style: TextStyle(fontFamily: 'Cinzel Decorative', color: Color(0xFFE5C158), fontSize: 16),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Ange användarnamnet på personen som ska ges admin-rättigheter:",
+                    style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'MedievalSharp'),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: TextField(
+                      controller: newAdminController,
+                      style: const TextStyle(
+                        color: Color(0xFFE5C158),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        fontFamily: 'MedievalSharp',
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: "t.ex. sir_lancelot...",
+                        hintStyle: TextStyle(color: Colors.grey, fontSize: 12, fontFamily: 'MedievalSharp'),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                    ),
+                  ),
+                  if (dialogError.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      dialogError,
+                      style: const TextStyle(color: Color(0xFFFF8A80), fontSize: 12, fontFamily: 'MedievalSharp'),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Avbryt", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4CAF50),
+                    foregroundColor: Colors.black,
+                  ),
+                  onPressed: () async {
+                    final rawName = newAdminController.text.trim().toLowerCase();
+                    if (rawName.isEmpty) {
+                      setDialogState(() {
+                        dialogError = "Ange ett användarnamn!";
+                      });
+                      return;
+                    }
+
+                    if (_adminUsernames.contains(rawName)) {
+                      setDialogState(() {
+                        dialogError = "Detta användarnamn är redan admin!";
+                      });
+                      return;
+                    }
+
+                    try {
+                      final docId = rawName.replaceAll(' ', '_');
+                      await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
+                        'username': rawName,
+                        'role': 'admin',
+                        'added_by': 'hetelmers hot',
+                        'added_at': FieldValue.serverTimestamp(),
+                      });
+
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            backgroundColor: const Color(0xFF2E7D32),
+                            content: Text(
+                              "Användaren '$rawName' har lagts till som admin!",
+                              style: const TextStyle(fontFamily: 'MedievalSharp', color: Colors.white),
+                            ),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      setDialogState(() {
+                        dialogError = "Ett fel uppstod när admin skulle sparas: $e";
+                      });
+                    }
+                  },
+                  child: const Text("Spara Admin", style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _deleteAdminUser(String username) {
+    if (username == 'hetelmers hot') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFFC62828),
+          content: Text("Det går inte att ta bort Superadmin!"),
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2125),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFFE5C158), width: 1.5),
+          ),
+          title: const Text("Ta bort Admin?", style: TextStyle(color: Color(0xFFE5C158), fontFamily: 'Cinzel Decorative')),
+          content: Text(
+            "Är du säker på att du vill ta bort admin-rättigheterna för '$username'?",
+            style: const TextStyle(color: Colors.white70, fontFamily: 'MedievalSharp'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Avbryt", style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD32F2F)),
+              onPressed: () async {
+                final docId = username.replaceAll(' ', '_');
+                await FirebaseFirestore.instance.collection('admin_users').doc(docId).delete();
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: const Color(0xFFD32F2F),
+                      content: Text("Admin '$username' har tagits bort."),
+                    ),
+                  );
+                }
+              },
+              child: const Text("Ta bort", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSuperAdminUsersTab() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          color: Colors.black45,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Totalt ${_adminUsernames.length} administratörer i databasen",
+                style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'MedievalSharp'),
+              ),
+              ElevatedButton.icon(
+                onPressed: _showAddAdminDialog,
+                icon: const Icon(Icons.person_add, size: 14, color: Colors.black),
+                label: const Text(
+                  "Ny Admin",
+                  style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp'),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4CAF50),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: _adminUsernames.length,
+            itemBuilder: (context, index) {
+              final adminName = _adminUsernames[index];
+              final isSuper = (adminName == 'hetelmers hot');
+
+              return Card(
+                key: ValueKey(adminName),
+                color: const Color(0xFF1E2125),
+                margin: const EdgeInsets.only(bottom: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: BorderSide(
+                    color: isSuper ? const Color(0xFFFFD700) : const Color(0xFF8B7355),
+                    width: isSuper ? 1.8 : 1.0,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isSuper ? Icons.workspace_premium : Icons.shield,
+                        color: isSuper ? const Color(0xFFFFD700) : const Color(0xFF90CAF9),
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              adminName,
+                              style: const TextStyle(
+                                fontFamily: 'MedievalSharp',
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              isSuper ? "👑 Superadmin (Fullständiga rättigheter)" : "🛡️ Administratör",
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isSuper ? const Color(0xFFFFD700) : Colors.white70,
+                                fontFamily: 'MedievalSharp',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (!isSuper)
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, color: Color(0xFFE57373), size: 20),
+                          tooltip: "Ta bort admin",
+                          onPressed: () => _deleteAdminUser(adminName),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildAdminScreen() {
     int totalQuestLevels = 0;
     for (final q in _quests) {
@@ -4056,31 +4405,33 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final int maxAchievableLevel = 50 + totalQuestLevels + totalPotionLevels + totalBonusQuestLevels;
 
     return DefaultTabController(
-      length: 3,
+      length: _isSuperAdmin ? 4 : 3,
       child: Scaffold(
         backgroundColor: const Color(0xFF0F1115),
         appBar: AppBar(
           toolbarHeight: 44,
           backgroundColor: const Color(0xFF1E2125),
           iconTheme: const IconThemeData(color: Color(0xFFE5C158)),
-          title: const Text(
-            "⚙️ ADMINPANEL",
-            style: TextStyle(
+          title: Text(
+            _isSuperAdmin ? "👑 SUPERADMIN-PANEL" : "⚙️ ADMINPANEL",
+            style: const TextStyle(
               fontFamily: 'Cinzel Decorative',
               fontSize: 14,
               color: Color(0xFFE5C158),
               fontWeight: FontWeight.bold,
             ),
           ),
-          bottom: const TabBar(
-            indicatorColor: Color(0xFFFFD700),
-            labelColor: Color(0xFFFFD700),
+          bottom: TabBar(
+            indicatorColor: const Color(0xFFFFD700),
+            labelColor: const Color(0xFFFFD700),
             unselectedLabelColor: Colors.grey,
-            labelStyle: TextStyle(fontSize: 11, fontFamily: 'MedievalSharp'),
+            labelStyle: const TextStyle(fontSize: 11, fontFamily: 'MedievalSharp'),
             tabs: [
-              Tab(icon: Icon(Icons.assignment, size: 16), text: "Uppdrag"),
-              Tab(icon: Icon(Icons.science, size: 16), text: "Potions"),
-              Tab(icon: Icon(Icons.military_tech, size: 16), text: "Bonusuppdrag"),
+              const Tab(icon: Icon(Icons.assignment, size: 16), text: "Uppdrag"),
+              const Tab(icon: Icon(Icons.science, size: 16), text: "Potions"),
+              const Tab(icon: Icon(Icons.military_tech, size: 16), text: "Bonusuppdrag"),
+              if (_isSuperAdmin)
+                const Tab(icon: Icon(Icons.supervisor_account, size: 16), text: "Admins"),
             ],
           ),
           actions: [
@@ -4626,6 +4977,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         ),
                       ],
                     ),
+                    if (_isSuperAdmin)
+                      _buildSuperAdminUsersTab(),
                   ],
                 ),
               ),
