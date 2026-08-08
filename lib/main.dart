@@ -19,6 +19,13 @@ void main() async {
 
 enum AdventureState { countdown, login, intro, grinding, admin }
 
+int _parseInt(dynamic val, [int fallback = 0]) {
+  if (val == null) return fallback;
+  if (val is num) return val.toInt();
+  if (val is String) return int.tryParse(val) ?? fallback;
+  return fallback;
+}
+
 class DAoCLevelCounterApp extends StatelessWidget {
   const DAoCLevelCounterApp({super.key});
 
@@ -64,7 +71,7 @@ class SubQuestInfo {
       title: map['title'] as String? ?? '',
       password: map['password'] as String? ?? '',
       description: map['description'] as String? ?? map['hint'] as String? ?? '',
-      rewardLevels: (map['rewardLevels'] ?? map['reward_levels'] as num?)?.toInt() ?? 0,
+      rewardLevels: _parseInt(map['rewardLevels'] ?? map['reward_levels'], 0),
     );
   }
 
@@ -132,11 +139,11 @@ class QuestInfo {
       id: doc.id,
       title: data['title'] as String? ?? '',
       password: data['password'] as String? ?? '',
-      rewardLevels: (data['rewardLevels'] ?? data['reward_levels'] as num?)?.toInt() ?? 10,
+      rewardLevels: _parseInt(data['rewardLevels'] ?? data['reward_levels'], 10),
       description: data['description'] as String? ?? '',
       completionMessage: data['completionMessage'] as String? ?? data['completion_message'] as String? ?? '',
-      order: (data['order'] as num?)?.toInt() ?? 0,
-      requiredLevel: (data['requiredLevel'] ?? data['required_level'] ?? data['minLevel'] as num?)?.toInt() ?? 0,
+      order: _parseInt(data['order'], 0),
+      requiredLevel: _parseInt(data['requiredLevel'] ?? data['required_level'] ?? data['minLevel'], 0),
       subquests: subList,
     );
   }
@@ -183,7 +190,7 @@ class PotionSecretInfo {
     return PotionSecretInfo(
       id: doc.id,
       secret: data['secret'] as String? ?? '',
-      rewardLevels: (data['rewardLevels'] ?? data['reward_levels'] as num?)?.toInt() ?? 10,
+      rewardLevels: _parseInt(data['rewardLevels'] ?? data['reward_levels'], 10),
     );
   }
 
@@ -233,8 +240,8 @@ class BonusQuestInfo {
       title: data['title'] as String? ?? '',
       password: data['password'] as String? ?? '',
       description: data['description'] as String? ?? '',
-      rewardLevels: (data['rewardLevels'] ?? data['reward_levels'] as num?)?.toInt() ?? 50,
-      unlockedByQuestOrder: (data['unlockedByQuestOrder'] ?? data['unlocked_by_quest_order'] as num?)?.toInt() ?? 1,
+      rewardLevels: _parseInt(data['rewardLevels'] ?? data['reward_levels'], 50),
+      unlockedByQuestOrder: _parseInt(data['unlockedByQuestOrder'] ?? data['unlocked_by_quest_order'], 1),
     );
   }
 
@@ -546,6 +553,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       final loadedQuests = snapshot.docs
           .map((doc) => QuestInfo.fromFirestore(doc))
           .toList();
+      loadedQuests.sort((a, b) => a.order.compareTo(b.order));
           
       if (mounted && loadedQuests.isNotEmpty) {
         setState(() {
