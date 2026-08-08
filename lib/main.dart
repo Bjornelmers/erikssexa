@@ -3035,12 +3035,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         ),
                       ),
                       ],
-                      const SizedBox(height: 16),
-
-                      // ARAGNOZ PARTY SECTION
-                      _buildPartySection(),
-                      const SizedBox(height: 16),
-
                       // POTIONS & BONUS QUESTS SECTION (RESPONSIVE GRID / COLUMN)
                       LayoutBuilder(
                         builder: (context, constraints) {
@@ -3300,6 +3294,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           }
                         },
                       ),
+                      const SizedBox(height: 16),
+
+                      // ARAGNOZ PARTY SECTION
+                      _buildPartySection(),
                       const SizedBox(height: 20),
 
                       // COMPLETED QUESTS LOG
