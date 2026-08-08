@@ -279,6 +279,38 @@ class BonusQuestInfo {
   }
 }
 
+class AdminUserInfo {
+  final String id;
+  final String username;
+  final String role;
+  final int unlockedByQuestOrder;
+
+  AdminUserInfo({
+    required this.id,
+    required this.username,
+    this.role = 'admin',
+    this.unlockedByQuestOrder = 999,
+  });
+
+  factory AdminUserInfo.fromFirestore(DocumentSnapshot doc) {
+    final data = _toMapStringDynamic(doc.data());
+    return AdminUserInfo(
+      id: doc.id,
+      username: data['username']?.toString() ?? doc.id,
+      role: data['role']?.toString() ?? 'admin',
+      unlockedByQuestOrder: _parseInt(data['unlockedByQuestOrder'] ?? data['unlocked_by_quest_order'], 999),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'username': username,
+      'role': role,
+      'unlockedByQuestOrder': unlockedByQuestOrder,
+    };
+  }
+}
+
 class MainAdventureManager extends StatefulWidget {
   const MainAdventureManager({super.key});
 
@@ -300,7 +332,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   StreamSubscription? _bonusQuestsSubscription;
   StreamSubscription? _adminUsersSubscription;
 
-  List<String> _adminUsernames = ['hetelmers hot', 'spellhound'];
+  List<AdminUserInfo> _adminUsers = [
+    AdminUserInfo(id: 'hetelmers_hot', username: 'hetelmers hot', role: 'superadmin', unlockedByQuestOrder: 999),
+    AdminUserInfo(id: 'spellhound', username: 'spellhound', role: 'admin', unlockedByQuestOrder: 999),
+  ];
+
+  List<String> get _adminUsernames => _adminUsers.map((a) => a.username.trim().toLowerCase()).toList();
 
   // Countdown target: August 15, 2026, 09:00 AM
   final DateTime _targetDate = DateTime(2026, 8, 15, 9, 0);
@@ -659,14 +696,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         debugPrint("Firestore 'admin_users' collection is empty. Seeding defaults...");
         try {
           final batch = FirebaseFirestore.instance.batch();
-          final defaultAdmins = ['hetelmers hot', 'spellhound'];
-          for (final username in defaultAdmins) {
-            final docId = username.replaceAll(' ', '_');
-            batch.set(adminRef.doc(docId), {
-              'username': username,
-              'role': username == 'hetelmers hot' ? 'superadmin' : 'admin',
-              'created_at': FieldValue.serverTimestamp(),
-            });
+          final defaultAdmins = [
+            AdminUserInfo(id: 'hetelmers_hot', username: 'hetelmers hot', role: 'superadmin', unlockedByQuestOrder: 999),
+            AdminUserInfo(id: 'spellhound', username: 'spellhound', role: 'admin', unlockedByQuestOrder: 999),
+          ];
+          for (final a in defaultAdmins) {
+            batch.set(adminRef.doc(a.id), a.toMap());
           }
           await batch.commit();
         } catch (e) {
@@ -676,20 +711,19 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       }
 
       final loadedAdmins = snapshot.docs
-          .map((doc) => (doc.data()['username']?.toString() ?? doc.id).trim().toLowerCase())
-          .where((u) => u.isNotEmpty)
+          .map((doc) => AdminUserInfo.fromFirestore(doc))
           .toList();
 
-      if (!loadedAdmins.contains('hetelmers hot')) {
-        loadedAdmins.insert(0, 'hetelmers hot');
+      if (!loadedAdmins.any((a) => a.username.toLowerCase() == 'hetelmers hot')) {
+        loadedAdmins.insert(0, AdminUserInfo(id: 'hetelmers_hot', username: 'hetelmers hot', role: 'superadmin', unlockedByQuestOrder: 999));
       }
-      if (!loadedAdmins.contains('spellhound')) {
-        loadedAdmins.add('spellhound');
+      if (!loadedAdmins.any((a) => a.username.toLowerCase() == 'spellhound')) {
+        loadedAdmins.add(AdminUserInfo(id: 'spellhound', username: 'spellhound', role: 'admin', unlockedByQuestOrder: 999));
       }
 
       if (mounted) {
         setState(() {
-          _adminUsernames = loadedAdmins.toSet().toList();
+          _adminUsers = loadedAdmins;
         });
       }
     }, onError: (error) {
@@ -2997,6 +3031,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       ],
                       const SizedBox(height: 16),
 
+                      // ARAGNOZ PARTY SECTION
+                      _buildPartySection(),
+                      const SizedBox(height: 16),
+
                       // POTIONS & BONUS QUESTS SECTION (RESPONSIVE GRID / COLUMN)
                       LayoutBuilder(
                         builder: (context, constraints) {
@@ -4198,6 +4236,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
                         'username': rawName,
                         'role': 'admin',
+                        'unlockedByQuestOrder': 999,
                         'added_by': 'hetelmers hot',
                         'added_at': FieldValue.serverTimestamp(),
                       });
@@ -4283,6 +4322,173 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
+  Widget _buildPartySection() {
+    int activeCount = 0;
+    for (final a in _adminUsers) {
+      if (_completedQuestsCount >= a.unlockedByQuestOrder) {
+        activeCount++;
+      }
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E2125), Color(0xFF141619)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF8B7355), width: 1.5),
+        boxShadow: const [
+          BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8B7355).withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFE5C158), width: 1),
+                    ),
+                    child: const Icon(Icons.shield_rounded, color: Color(0xFFE5C158), size: 18),
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "ARAGNOZ PARTY",
+                        style: TextStyle(
+                          fontFamily: 'MedievalSharp',
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFE5C158),
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                      Text(
+                        "Gruppmedlemmar (${_adminUsers.length} st)",
+                        style: const TextStyle(fontSize: 11, color: Colors.grey, fontFamily: 'MedievalSharp'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: activeCount > 0
+                      ? const Color(0xFF2E7D32).withValues(alpha: 0.3)
+                      : Colors.black45,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: activeCount > 0 ? const Color(0xFF81C784) : Colors.grey,
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      activeCount > 0 ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                      size: 12,
+                      color: activeCount > 0 ? const Color(0xFF81C784) : Colors.grey,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      "$activeCount / ${_adminUsers.length} AKTIVA",
+                      style: TextStyle(
+                        fontFamily: 'MedievalSharp',
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: activeCount > 0 ? const Color(0xFF81C784) : Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _adminUsers.map((admin) {
+              final bool isActive = _completedQuestsCount >= admin.unlockedByQuestOrder;
+              final bool isSuper = admin.username.toLowerCase() == 'hetelmers hot';
+
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? const Color(0xFF1B3A27).withValues(alpha: 0.7)
+                      : Colors.black.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isActive
+                        ? const Color(0xFF4CAF50)
+                        : (isSuper ? const Color(0xFFFFD700).withValues(alpha: 0.4) : const Color(0xFF8B7355).withValues(alpha: 0.4)),
+                    width: isActive ? 1.2 : 0.8,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      isActive ? "⚔️" : "💤",
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(width: 6),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              admin.username,
+                              style: TextStyle(
+                                fontFamily: 'MedievalSharp',
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isActive ? Colors.white : Colors.white60,
+                              ),
+                            ),
+                            if (isSuper) ...[
+                              const SizedBox(width: 4),
+                              const Text("👑", style: TextStyle(fontSize: 10)),
+                            ],
+                          ],
+                        ),
+                        Text(
+                          isActive ? "ACTIVE" : "AFK",
+                          style: TextStyle(
+                            fontFamily: 'MedievalSharp',
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: isActive ? const Color(0xFF81C784) : const Color(0xFFE57373),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSuperAdminUsersTab() {
     return Column(
       children: [
@@ -4293,7 +4499,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                "Totalt ${_adminUsernames.length} administratörer i databasen",
+                "Totalt ${_adminUsers.length} administratörer i databasen",
                 style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'MedievalSharp'),
               ),
               ElevatedButton.icon(
@@ -4316,13 +4522,14 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.all(12),
-            itemCount: _adminUsernames.length,
+            itemCount: _adminUsers.length,
             itemBuilder: (context, index) {
-              final adminName = _adminUsernames[index];
-              final isSuper = (adminName == 'hetelmers hot');
+              final admin = _adminUsers[index];
+              final isSuper = (admin.username.toLowerCase() == 'hetelmers hot');
+              final currentUnlockOrder = admin.unlockedByQuestOrder;
 
               return Card(
-                key: ValueKey(adminName),
+                key: ValueKey(admin.id),
                 color: const Color(0xFF1E2125),
                 margin: const EdgeInsets.only(bottom: 10),
                 shape: RoundedRectangleBorder(
@@ -4333,46 +4540,97 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                   ),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Row(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
                     children: [
-                      Icon(
-                        isSuper ? Icons.workspace_premium : Icons.shield,
-                        color: isSuper ? const Color(0xFFFFD700) : const Color(0xFF90CAF9),
-                        size: 24,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              adminName,
-                              style: const TextStyle(
-                                fontFamily: 'MedievalSharp',
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
+                      Row(
+                        children: [
+                          Icon(
+                            isSuper ? Icons.workspace_premium : Icons.shield,
+                            color: isSuper ? const Color(0xFFFFD700) : const Color(0xFF90CAF9),
+                            size: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  admin.username,
+                                  style: const TextStyle(
+                                    fontFamily: 'MedievalSharp',
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  isSuper ? "👑 Superadmin" : "🛡️ Administratör",
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isSuper ? const Color(0xFFFFD700) : Colors.white70,
+                                    fontFamily: 'MedievalSharp',
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              isSuper ? "👑 Superadmin (Fullständiga rättigheter)" : "🛡️ Administratör",
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: isSuper ? const Color(0xFFFFD700) : Colors.white70,
-                                fontFamily: 'MedievalSharp',
-                              ),
+                          ),
+                          if (!isSuper)
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Color(0xFFE57373), size: 20),
+                              tooltip: "Ta bort admin",
+                              onPressed: () => _deleteAdminUser(admin.username),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.black45,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFF8B7355).withValues(alpha: 0.5)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "Aktiv i Party efter:",
+                              style: TextStyle(fontSize: 11, color: Colors.white70, fontFamily: 'MedievalSharp'),
+                            ),
+                            DropdownButton<int>(
+                              value: [0, 1, 2, 3, 4, 5, 6, 7, 8, 999].contains(currentUnlockOrder) ? currentUnlockOrder : 999,
+                              dropdownColor: const Color(0xFF1E2125),
+                              isDense: true,
+                              style: const TextStyle(fontSize: 11, color: Color(0xFFFFD700), fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold),
+                              underline: const SizedBox(),
+                              items: const [
+                                DropdownMenuItem(value: 999, child: Text("💤 Alltid AFK")),
+                                DropdownMenuItem(value: 0, child: Text("⚔️ Aktiv från start")),
+                                DropdownMenuItem(value: 1, child: Text("⚔️ Efter Uppdrag 1")),
+                                DropdownMenuItem(value: 2, child: Text("⚔️ Efter Uppdrag 2")),
+                                DropdownMenuItem(value: 3, child: Text("⚔️ Efter Uppdrag 3")),
+                                DropdownMenuItem(value: 4, child: Text("⚔️ Efter Uppdrag 4")),
+                                DropdownMenuItem(value: 5, child: Text("⚔️ Efter Uppdrag 5")),
+                                DropdownMenuItem(value: 6, child: Text("⚔️ Efter Uppdrag 6")),
+                                DropdownMenuItem(value: 7, child: Text("⚔️ Efter Uppdrag 7")),
+                                DropdownMenuItem(value: 8, child: Text("⚔️ Efter Uppdrag 8")),
+                              ],
+                              onChanged: (newVal) async {
+                                if (newVal != null) {
+                                  final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
+                                  await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
+                                    'username': admin.username,
+                                    'role': admin.role,
+                                    'unlockedByQuestOrder': newVal,
+                                  }, SetOptions(merge: true));
+                                }
+                              },
                             ),
                           ],
                         ),
                       ),
-                      if (!isSuper)
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Color(0xFFE57373), size: 20),
-                          tooltip: "Ta bort admin",
-                          onPressed: () => _deleteAdminUser(adminName),
-                        ),
                     ],
                   ),
                 ),
