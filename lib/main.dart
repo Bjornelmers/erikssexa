@@ -326,6 +326,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   AdventureState _state = AdventureState.countdown;
   bool _isAdmin = false;
   bool _isSuperAdmin = false;
+  String _currentUsername = "";
   int _level = 50; // DAoC character starts at max level 50
   final int _targetLevel = 1337;
   bool _isLoading = true;
@@ -775,6 +776,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final savedStateIndex = prefs.getInt('adventure_state') ?? AdventureState.countdown.index;
     final isAdmin = prefs.getBool('is_admin') ?? false;
     final isSuperAdmin = prefs.getBool('is_super_admin') ?? false;
+    final currentUsername = prefs.getString('current_username') ?? "";
     final completedQuests = prefs.getInt('completed_quests_count') ?? 0;
     final completedSubQuestsList = prefs.getStringList('completed_subquests') ?? [];
     final completedBonusQuestsList = prefs.getStringList('completed_bonus_quests') ?? [];
@@ -795,6 +797,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         _state = savedState;
         _isAdmin = isAdmin;
         _isSuperAdmin = isSuperAdmin;
+        _currentUsername = currentUsername;
         _completedQuestsCount = completedQuests;
         _completedSubQuestKeys = completedSubQuestsList.toSet();
         _completedBonusQuestKeys = completedBonusQuestsList.toSet();
@@ -817,10 +820,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     }
   }
 
-  Future<void> _saveAdminState(bool isAdmin, {bool isSuperAdmin = false}) async {
+  Future<void> _saveAdminState(bool isAdmin, {bool isSuperAdmin = false, String currentUsername = ""}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_admin', isAdmin);
     await prefs.setBool('is_super_admin', isSuperAdmin);
+    await prefs.setString('current_username', currentUsername);
   }
 
   Future<void> _saveAdventureState(AdventureState state) async {
@@ -1101,9 +1105,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         _loginError = "";
         _isAdmin = isAdminUser;
         _isSuperAdmin = isSuperAdminUser;
+        _currentUsername = user;
         _state = AdventureState.intro;
       });
-      _saveAdminState(isAdminUser, isSuperAdmin: isSuperAdminUser);
+      _saveAdminState(isAdminUser, isSuperAdmin: isSuperAdminUser, currentUsername: user);
       _saveAdventureState(AdventureState.intro);
       AudioController.instance.playLevelUpSound();
       _startMusic(); // Ensure music plays
@@ -4093,7 +4098,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         'username': rawName,
                         'role': 'admin',
                         'unlockedByQuestOrder': 999,
-                        'added_by': 'hetelmers hot',
+                        'added_by': _currentUsername.isNotEmpty ? _currentUsername : 'admin',
                         'added_at': FieldValue.serverTimestamp(),
                       });
 
@@ -4126,6 +4131,16 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _deleteAdminUser(String username) {
+    if (!_isSuperAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFFC62828),
+          content: Text("Endast Superadmin kan ta bort administratörer!"),
+        ),
+      );
+      return;
+    }
+
     if (username == 'hetelmers hot') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -4202,6 +4217,17 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _showCustomStatusDialog(AdminUserInfo admin) {
+    final isSelf = admin.username.toLowerCase().trim() == _currentUsername.toLowerCase().trim();
+    if (!_isSuperAdmin && !isSelf) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFFC62828),
+          content: Text("Du kan endast ändra din egen status!"),
+        ),
+      );
+      return;
+    }
+
     final TextEditingController controller = TextEditingController(text: admin.customStatus);
 
     showDialog(
@@ -4487,6 +4513,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             itemBuilder: (context, index) {
               final admin = _adminUsers[index];
               final isSuper = (admin.username.toLowerCase() == 'hetelmers hot');
+              final isSelf = _currentUsername.isNotEmpty && (admin.username.toLowerCase().trim() == _currentUsername.toLowerCase().trim());
+              final canEditThisAdmin = _isSuperAdmin || isSelf;
               final currentUnlockOrder = admin.unlockedByQuestOrder;
               final currentStatus = admin.customStatus.trim();
 
@@ -4513,8 +4541,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                   side: BorderSide(
-                    color: isSuper ? const Color(0xFFFFD700) : const Color(0xFF8B7355),
-                    width: isSuper ? 1.8 : 1.0,
+                    color: isSelf
+                        ? const Color(0xFF81C784)
+                        : (isSuper ? const Color(0xFFFFD700) : const Color(0xFF8B7355)),
+                    width: (isSelf || isSuper) ? 1.8 : 1.0,
                   ),
                 ),
                 child: Padding(
@@ -4534,14 +4564,38 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  admin.username,
-                                  style: const TextStyle(
-                                    fontFamily: 'MedievalSharp',
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      admin.username,
+                                      style: const TextStyle(
+                                        fontFamily: 'MedievalSharp',
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    if (isSelf) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF4CAF50).withValues(alpha: 0.3),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: const Color(0xFF81C784), width: 1),
+                                        ),
+                                        child: const Text(
+                                          "DITT KONTO",
+                                          style: TextStyle(
+                                            fontFamily: 'MedievalSharp',
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF81C784),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
@@ -4555,7 +4609,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                               ],
                             ),
                           ),
-                          if (!isSuper)
+                          if (_isSuperAdmin && !isSuper)
                             IconButton(
                               icon: const Icon(Icons.delete_outline, color: Color(0xFFE57373), size: 20),
                               tooltip: "Ta bort admin",
@@ -4587,12 +4641,14 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         runSpacing: 6,
                         children: [
                           ElevatedButton.icon(
-                            onPressed: () async {
-                              final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
-                              await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
-                                'customStatus': 'AFK',
-                              }, SetOptions(merge: true));
-                            },
+                            onPressed: canEditThisAdmin
+                                ? () async {
+                                    final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
+                                    await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
+                                      'customStatus': 'AFK',
+                                    }, SetOptions(merge: true));
+                                  }
+                                : null,
                             icon: const Icon(Icons.pause_circle_filled, size: 12, color: Colors.white),
                             label: const Text("Tvinga AFK", style: TextStyle(fontSize: 10, fontFamily: 'MedievalSharp')),
                             style: ElevatedButton.styleFrom(
@@ -4604,12 +4660,14 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             ),
                           ),
                           ElevatedButton.icon(
-                            onPressed: () async {
-                              final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
-                              await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
-                                'customStatus': 'ACTIVE',
-                              }, SetOptions(merge: true));
-                            },
+                            onPressed: canEditThisAdmin
+                                ? () async {
+                                    final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
+                                    await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
+                                      'customStatus': 'ACTIVE',
+                                    }, SetOptions(merge: true));
+                                  }
+                                : null,
                             icon: const Icon(Icons.play_circle_fill, size: 12, color: Colors.black),
                             label: const Text("Tvinga ACTIVE", style: TextStyle(fontSize: 10, fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold)),
                             style: ElevatedButton.styleFrom(
@@ -4621,12 +4679,14 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             ),
                           ),
                           ElevatedButton.icon(
-                            onPressed: () async {
-                              final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
-                              await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
-                                'customStatus': '',
-                              }, SetOptions(merge: true));
-                            },
+                            onPressed: canEditThisAdmin
+                                ? () async {
+                                    final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
+                                    await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
+                                      'customStatus': '',
+                                    }, SetOptions(merge: true));
+                                  }
+                                : null,
                             icon: const Icon(Icons.autorenew, size: 12, color: Colors.black),
                             label: const Text("Auto (Uppdrag)", style: TextStyle(fontSize: 10, fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold)),
                             style: ElevatedButton.styleFrom(
@@ -4638,7 +4698,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             ),
                           ),
                           ElevatedButton.icon(
-                            onPressed: () => _showCustomStatusDialog(admin),
+                            onPressed: canEditThisAdmin ? () => _showCustomStatusDialog(admin) : null,
                             icon: const Icon(Icons.edit_note, size: 12, color: Colors.black),
                             label: const Text("Anpassad...", style: TextStyle(fontSize: 10, fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold)),
                             style: ElevatedButton.styleFrom(
@@ -4686,18 +4746,27 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                 DropdownMenuItem(value: 7, child: Text("⚔️ Efter Uppdrag 7")),
                                 DropdownMenuItem(value: 8, child: Text("⚔️ Efter Uppdrag 8")),
                               ],
-                              onChanged: (newVal) async {
-                                if (newVal != null) {
-                                  final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
-                                  await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
-                                    'unlockedByQuestOrder': newVal,
-                                  }, SetOptions(merge: true));
-                                }
-                              },
+                              onChanged: canEditThisAdmin
+                                  ? (newVal) async {
+                                      if (newVal != null) {
+                                        final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
+                                        await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
+                                          'unlockedByQuestOrder': newVal,
+                                        }, SetOptions(merge: true));
+                                      }
+                                    }
+                                  : null,
                             ),
                           ],
                         ),
                       ),
+                      if (!canEditThisAdmin) ...[
+                        const SizedBox(height: 6),
+                        const Text(
+                          "🔒 Endast Superadmin kan ändra andra administratörer",
+                          style: TextStyle(fontSize: 10, color: Colors.grey, fontFamily: 'MedievalSharp', fontStyle: FontStyle.italic),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -4730,7 +4799,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final int maxAchievableLevel = 50 + totalQuestLevels + totalPotionLevels + totalBonusQuestLevels;
 
     return DefaultTabController(
-      length: _isSuperAdmin ? 4 : 3,
+      length: 4,
       child: Scaffold(
         backgroundColor: const Color(0xFF0F1115),
         appBar: AppBar(
@@ -4751,12 +4820,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             labelColor: const Color(0xFFFFD700),
             unselectedLabelColor: Colors.grey,
             labelStyle: const TextStyle(fontSize: 11, fontFamily: 'MedievalSharp'),
-            tabs: [
-              const Tab(icon: Icon(Icons.assignment, size: 16), text: "Uppdrag"),
-              const Tab(icon: Icon(Icons.science, size: 16), text: "Potions"),
-              const Tab(icon: Icon(Icons.military_tech, size: 16), text: "Bonusuppdrag"),
-              if (_isSuperAdmin)
-                const Tab(icon: Icon(Icons.supervisor_account, size: 16), text: "Admins"),
+            tabs: const [
+              Tab(icon: Icon(Icons.assignment, size: 16), text: "Uppdrag"),
+              Tab(icon: Icon(Icons.science, size: 16), text: "Potions"),
+              Tab(icon: Icon(Icons.military_tech, size: 16), text: "Bonusuppdrag"),
+              Tab(icon: Icon(Icons.supervisor_account, size: 16), text: "Admins"),
             ],
           ),
           actions: [
@@ -5302,8 +5370,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         ),
                       ],
                     ),
-                    if (_isSuperAdmin)
-                      _buildSuperAdminUsersTab(),
+                    _buildSuperAdminUsersTab(),
                   ],
                 ),
               ),
