@@ -2602,7 +2602,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         ),
                       ],
                       const Text(
-                        "MIDGARD SHAMAN QUEST",
+                        "ARAGNOZ SVENSEXEQUEST",
                         style: TextStyle(
                           fontFamily: 'Cinzel Decorative',
                           fontSize: 20,
