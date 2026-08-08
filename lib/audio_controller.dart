@@ -46,4 +46,18 @@ class AudioController {
       print("Error calling playVictory in JS: $e");
     }
   }
+
+  void pauseMusic() {
+    try {
+      js.context.callMethod('eval', ['window.daocAudio.stopMusic()']);
+    } catch (e) {
+      print("Error calling stopMusic in JS: $e");
+    }
+  }
+
+  void resumeMusic() {
+    if (!_isMuted) {
+      playThemeMusic();
+    }
+  }
 }

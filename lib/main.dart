@@ -96,6 +96,7 @@ class QuestInfo {
   final String password; // Exact lowercase check (or custom checker)
   final int rewardLevels;
   final String description;
+  final String completionMessage;
   final int order;
   final int requiredLevel;
   final List<SubQuestInfo> subquests;
@@ -106,6 +107,7 @@ class QuestInfo {
     required this.password,
     required this.rewardLevels,
     required this.description,
+    this.completionMessage = '',
     this.order = 0,
     this.requiredLevel = 0,
     this.subquests = const [],
@@ -132,6 +134,7 @@ class QuestInfo {
       password: data['password'] as String? ?? '',
       rewardLevels: (data['rewardLevels'] ?? data['reward_levels'] as num?)?.toInt() ?? 10,
       description: data['description'] as String? ?? '',
+      completionMessage: data['completionMessage'] as String? ?? data['completion_message'] as String? ?? '',
       order: (data['order'] as num?)?.toInt() ?? 0,
       requiredLevel: (data['requiredLevel'] ?? data['required_level'] ?? data['minLevel'] as num?)?.toInt() ?? 0,
       subquests: subList,
@@ -144,6 +147,7 @@ class QuestInfo {
       'password': password,
       'rewardLevels': rewardLevels,
       'description': description,
+      'completionMessage': completionMessage,
       'order': order,
       'requiredLevel': requiredLevel,
       'subquests': subquests.map((s) => s.toMap()).toList(),
@@ -424,6 +428,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   Set<String> _completedBonusQuestKeys = {};
   final Map<String, TextEditingController> _bonusQuestControllers = {};
 
+  Set<int> _shownLevelVideos = {};
+  bool _showQuestConfetti = false;
+  Timer? _confettiTimer;
+
   TextEditingController _getBonusQuestController(String key) {
     return _bonusQuestControllers.putIfAbsent(key, () => TextEditingController());
   }
@@ -444,6 +452,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   @override
   void dispose() {
+    _confettiTimer?.cancel();
     _countdownTimer?.cancel();
     _stateSubscription?.cancel();
     _questsSubscription?.cancel();
@@ -655,6 +664,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final completedQuests = prefs.getInt('completed_quests_count') ?? 0;
     final completedSubQuestsList = prefs.getStringList('completed_subquests') ?? [];
     final completedBonusQuestsList = prefs.getStringList('completed_bonus_quests') ?? [];
+    final shownVideosList = prefs.getStringList('shown_level_videos') ?? [];
     
     AdventureState savedState = AdventureState.values[savedStateIndex];
 
@@ -672,6 +682,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         _completedQuestsCount = completedQuests;
         _completedSubQuestKeys = completedSubQuestsList.toSet();
         _completedBonusQuestKeys = completedBonusQuestsList.toSet();
+        _shownLevelVideos = shownVideosList.map((e) => int.tryParse(e) ?? 0).where((e) => e > 0).toSet();
         _isLoading = false;
       });
     }
@@ -720,6 +731,116 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   Future<void> _saveCompletedBonusQuests() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('completed_bonus_quests', _completedBonusQuestKeys.toList());
+  }
+
+  Future<void> _saveShownLevelVideos() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('shown_level_videos', _shownLevelVideos.map((e) => e.toString()).toList());
+  }
+
+  void _checkLevelMilestoneVideos(int oldLevel, int newLevel) {
+    if (oldLevel < 500 && newLevel >= 500 && !_shownLevelVideos.contains(500)) {
+      _shownLevelVideos.add(500);
+      _saveShownLevelVideos();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showLevelVideoModal('assets/videos/ding500.mp4', 'LEVEL 500 PASSERAD!');
+      });
+    }
+  }
+
+  void _showLevelVideoModal(String videoPath, String title) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return _LevelVideoDialog(
+          videoPath: videoPath,
+          title: title,
+          onClose: () {},
+        );
+      },
+    );
+  }
+
+  void _triggerQuestCompletionEffects({String? completionMessage, String? questTitle}) {
+    AudioController.instance.playLevelUpSound();
+
+    _confettiTimer?.cancel();
+    setState(() {
+      _showQuestConfetti = true;
+    });
+    _confettiTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) {
+        setState(() {
+          _showQuestConfetti = false;
+        });
+      }
+    });
+
+    if (completionMessage != null && completionMessage.trim().isNotEmpty) {
+      _showQuestCompletionMessageDialog(completionMessage.trim(), questTitle ?? 'Uppdrag');
+    }
+  }
+
+  void _showQuestCompletionMessageDialog(String message, String questTitle) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2125),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFD4AF37), width: 2),
+          ),
+          title: Row(
+            children: [
+              const Text("📜 ", style: TextStyle(fontSize: 22)),
+              Expanded(
+                child: Text(
+                  "Uppdrag fullbordat: $questTitle",
+                  style: const TextStyle(
+                    fontFamily: 'MedievalSharp',
+                    color: Color(0xFFE5C158),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF121417),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.4)),
+            ),
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontFamily: 'Cinzel',
+                color: Colors.white,
+                fontSize: 16,
+                height: 1.4,
+              ),
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD4AF37),
+                foregroundColor: Colors.black,
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                "Skål! 🍺",
+                style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // Secrets & Bypass
@@ -850,10 +971,15 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         debugPrint("Failed to write quest log to Firestore: $e");
       }
 
+      _checkLevelMilestoneVideos(oldLevel, newLevel);
+
       if (oldLevel < _targetLevel && newLevel >= _targetLevel) {
         AudioController.instance.playVictorySound();
       } else {
-        AudioController.instance.playLevelUpSound();
+        _triggerQuestCompletionEffects(
+          completionMessage: currentQuest.completionMessage,
+          questTitle: currentQuest.title,
+        );
       }
     } else {
       setState(() {
@@ -898,6 +1024,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       final oldLevel = _level;
       final newLevel = _level + sub.rewardLevels;
 
+      bool allSubquestsDone = false;
       setState(() {
         _completedSubQuestKeys.add(subKey);
         _level = newLevel;
@@ -905,13 +1032,14 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         controller.clear();
 
         // Check if all subquests of this quest are completed
-        bool allSubquestsDone = true;
+        bool allDone = true;
         for (final sq in quest.subquests) {
           if (!_completedSubQuestKeys.contains("${quest.id}_${sq.id}")) {
-            allSubquestsDone = false;
+            allDone = false;
             break;
           }
         }
+        allSubquestsDone = allDone;
 
         if (allSubquestsDone) {
           if (quest.rewardLevels > 0) {
@@ -940,10 +1068,15 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         debugPrint("Failed to write subquest log to Firestore: $e");
       }
 
+      _checkLevelMilestoneVideos(oldLevel, _level);
+
       if (oldLevel < _targetLevel && _level >= _targetLevel) {
         AudioController.instance.playVictorySound();
       } else {
-        AudioController.instance.playLevelUpSound();
+        _triggerQuestCompletionEffects(
+          completionMessage: allSubquestsDone ? quest.completionMessage : null,
+          questTitle: quest.title,
+        );
       }
     } else {
       setState(() {
@@ -1140,10 +1273,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       _potionPasswordController.clear();
                       Navigator.pop(context);
 
+                      _checkLevelMilestoneVideos(oldLevel, newLevel);
+
                       if (oldLevel < _targetLevel && newLevel >= _targetLevel) {
                         AudioController.instance.playVictorySound();
                       } else {
-                        AudioController.instance.playLevelUpSound();
+                        _triggerQuestCompletionEffects(questTitle: "Magic Potion");
                       }
 
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1402,10 +1537,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
       _getBonusQuestController(bonus.id).clear();
 
+      _checkLevelMilestoneVideos(oldLevel, newLevel);
+
       if (oldLevel < _targetLevel && newLevel >= _targetLevel) {
         AudioController.instance.playVictorySound();
       } else {
-        AudioController.instance.playLevelUpSound();
+        _triggerQuestCompletionEffects(questTitle: bonus.title);
       }
 
       setDialogState(() {
@@ -2924,6 +3061,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             ),
           ),
 
+          if (_showQuestConfetti) const CelebrationEffect(),
+
           // Celebration scroll overlay
           if (reachedVictory) ...[
             const CelebrationEffect(),
@@ -3123,6 +3262,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final isEditing = existingQuest != null;
     final titleController = TextEditingController(text: existingQuest?.title ?? '');
     final descController = TextEditingController(text: existingQuest?.description ?? '');
+    final completionMessageController = TextEditingController(text: existingQuest?.completionMessage ?? '');
     final passwordController = TextEditingController(text: existingQuest?.password ?? '');
     final rewardController = TextEditingController(text: (existingQuest?.rewardLevels ?? 10).toString());
     final orderController = TextEditingController(text: (existingQuest?.order ?? (_quests.length + 1)).toString());
@@ -3153,6 +3293,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     _adminTextField("Titel", titleController),
                     const SizedBox(height: 10),
                     _adminTextField("Beskrivning", descController, maxLines: 3),
+                    const SizedBox(height: 10),
+                    _adminTextField("Meddelande vid klarat uppdrag (valfritt)", completionMessageController, maxLines: 2),
                     const SizedBox(height: 10),
                     _adminTextField("Lösenord", passwordController),
                     const SizedBox(height: 10),
@@ -3251,6 +3393,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
                     final password = passwordController.text.trim();
                     final desc = descController.text.trim();
+                    final completionMsg = completionMessageController.text.trim();
                     final reward = int.tryParse(rewardController.text.trim()) ?? 10;
                     final order = int.tryParse(orderController.text.trim()) ?? (_quests.length + 1);
                     final requiredLevel = int.tryParse(requiredLevelController.text.trim()) ?? 0;
@@ -3262,6 +3405,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       'title': title,
                       'password': password,
                       'description': desc,
+                      'completionMessage': completionMsg,
                       'rewardLevels': reward,
                       'order': order,
                       'requiredLevel': requiredLevel,
@@ -4333,6 +4477,160 @@ class _IntroVideoWidgetState extends State<IntroVideoWidget> {
             height: _controller.value.size.height,
             child: VideoPlayer(_controller),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LevelVideoDialog extends StatefulWidget {
+  final String videoPath;
+  final String title;
+  final VoidCallback onClose;
+
+  const _LevelVideoDialog({
+    required this.videoPath,
+    required this.title,
+    required this.onClose,
+  });
+
+  @override
+  State<_LevelVideoDialog> createState() => _LevelVideoDialogState();
+}
+
+class _LevelVideoDialogState extends State<_LevelVideoDialog> {
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    AudioController.instance.pauseMusic();
+    _controller = VideoPlayerController.asset(widget.videoPath)
+      ..initialize().then((_) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+          });
+          _controller.setVolume(1.0);
+          _controller.play();
+        }
+      }).catchError((error) {
+        debugPrint("Milestone video initialization failed: $error");
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+          });
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    AudioController.instance.resumeMusic();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF0F1115),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFD4AF37), width: 2),
+      ),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 700, maxHeight: 580),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header bar
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1E2125),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.movie, color: Color(0xFFD4AF37)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(
+                        fontFamily: 'MedievalSharp',
+                        color: Color(0xFFE5C158),
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.grey),
+                    onPressed: () {
+                      widget.onClose();
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ],
+              ),
+            ),
+            // Video area
+            Expanded(
+              child: ClipRRect(
+                child: Container(
+                  color: Colors.black,
+                  alignment: Alignment.center,
+                  child: _hasError
+                      ? const Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Text(
+                            "Kunde inte ladda videon.",
+                            style: TextStyle(color: Colors.redAccent, fontFamily: 'MedievalSharp'),
+                          ),
+                        )
+                      : !_isInitialized
+                          ? const Center(
+                              child: CircularProgressIndicator(color: Color(0xFFD4AF37)),
+                            )
+                          : AspectRatio(
+                              aspectRatio: _controller.value.aspectRatio > 0 ? _controller.value.aspectRatio : 16 / 9,
+                              child: VideoPlayer(_controller),
+                            ),
+                ),
+              ),
+            ),
+            // Footer with close/continue button
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1E2125),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(14)),
+              ),
+              child: Center(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD4AF37),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  onPressed: () {
+                    widget.onClose();
+                    Navigator.of(context).pop();
+                  },
+                  icon: const Icon(Icons.check),
+                  label: const Text(
+                    "Fortsätt äventyret! ⚔️",
+                    style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
