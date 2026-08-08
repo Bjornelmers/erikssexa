@@ -284,12 +284,14 @@ class AdminUserInfo {
   final String username;
   final String role;
   final int unlockedByQuestOrder;
+  final String customStatus;
 
   AdminUserInfo({
     required this.id,
     required this.username,
     this.role = 'admin',
     this.unlockedByQuestOrder = 999,
+    this.customStatus = '',
   });
 
   factory AdminUserInfo.fromFirestore(DocumentSnapshot doc) {
@@ -299,6 +301,7 @@ class AdminUserInfo {
       username: data['username']?.toString() ?? doc.id,
       role: data['role']?.toString() ?? 'admin',
       unlockedByQuestOrder: _parseInt(data['unlockedByQuestOrder'] ?? data['unlocked_by_quest_order'], 999),
+      customStatus: data['customStatus']?.toString() ?? data['custom_status']?.toString() ?? '',
     );
   }
 
@@ -307,6 +310,7 @@ class AdminUserInfo {
       'username': username,
       'role': role,
       'unlockedByQuestOrder': unlockedByQuestOrder,
+      'customStatus': customStatus,
     };
   }
 }
@@ -4324,10 +4328,114 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
+  bool _isPartyMemberActive(AdminUserInfo admin) {
+    final status = admin.customStatus.trim();
+    if (status.toUpperCase() == 'AFK') {
+      return false;
+    }
+    if (status.isNotEmpty) {
+      return true;
+    }
+    return _completedQuestsCount >= admin.unlockedByQuestOrder;
+  }
+
+  String _getPartyMemberStatusLabel(AdminUserInfo admin) {
+    final status = admin.customStatus.trim();
+    if (status.toUpperCase() == 'AFK') {
+      return "AFK";
+    }
+    if (status.isNotEmpty && status.toUpperCase() != 'ACTIVE') {
+      return status;
+    }
+    final active = _isPartyMemberActive(admin);
+    return active ? "ACTIVE" : "AFK";
+  }
+
+  void _showCustomStatusDialog(AdminUserInfo admin) {
+    final TextEditingController controller = TextEditingController(text: admin.customStatus);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2125),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFFE5C158), width: 1.5),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.edit_note, color: Color(0xFFE5C158), size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "Anpassad status för ${admin.username}",
+                  style: const TextStyle(fontFamily: 'Cinzel Decorative', color: Color(0xFFE5C158), fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Skriv in valfri statustext (t.ex. 'TANK', 'HEALER', 'ÖLHÄVARE'). Den visas i Aragnoz party-vy och behandlas som ACTIVE.",
+                style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'MedievalSharp'),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: TextField(
+                  controller: controller,
+                  style: const TextStyle(
+                    color: Color(0xFFE5C158),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    fontFamily: 'MedievalSharp',
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: "t.ex. TANK...",
+                    hintStyle: TextStyle(color: Colors.grey, fontSize: 12, fontFamily: 'MedievalSharp'),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Avbryt", style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4CAF50)),
+              onPressed: () async {
+                final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
+                await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
+                  'customStatus': controller.text.trim(),
+                }, SetOptions(merge: true));
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text("Spara Status", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'MedievalSharp')),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildPartySection() {
     int activeCount = 0;
     for (final a in _adminUsers) {
-      if (_completedQuestsCount >= a.unlockedByQuestOrder) {
+      if (_isPartyMemberActive(a)) {
         activeCount++;
       }
     }
@@ -4425,7 +4533,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             spacing: 8,
             runSpacing: 8,
             children: _adminUsers.map((admin) {
-              final bool isActive = _completedQuestsCount >= admin.unlockedByQuestOrder;
+              final bool isActive = _isPartyMemberActive(admin);
+              final String statusLabel = _getPartyMemberStatusLabel(admin);
               final bool isSuper = admin.username.toLowerCase() == 'hetelmers hot';
 
               return Container(
@@ -4471,7 +4580,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           ],
                         ),
                         Text(
-                          isActive ? "ACTIVE" : "AFK",
+                          statusLabel,
                           style: TextStyle(
                             fontFamily: 'MedievalSharp',
                             fontSize: 9,
@@ -4529,6 +4638,23 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
               final admin = _adminUsers[index];
               final isSuper = (admin.username.toLowerCase() == 'hetelmers hot');
               final currentUnlockOrder = admin.unlockedByQuestOrder;
+              final currentStatus = admin.customStatus.trim();
+
+              String statusBadgeText;
+              Color statusBadgeColor;
+              if (currentStatus.toUpperCase() == 'AFK') {
+                statusBadgeText = "💤 Manuell AFK";
+                statusBadgeColor = const Color(0xFFE57373);
+              } else if (currentStatus.toUpperCase() == 'ACTIVE') {
+                statusBadgeText = "⚔️ Manuell ACTIVE";
+                statusBadgeColor = const Color(0xFF81C784);
+              } else if (currentStatus.isNotEmpty) {
+                statusBadgeText = "⚔️ \"$currentStatus\" (Anpassad - Aktiv)";
+                statusBadgeColor = const Color(0xFFFFD700);
+              } else {
+                statusBadgeText = "⚙️ Automatisk (Efter Uppdrag #$currentUnlockOrder)";
+                statusBadgeColor = Colors.white70;
+              }
 
               return Card(
                 key: ValueKey(admin.id),
@@ -4544,6 +4670,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
@@ -4587,8 +4714,98 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         ],
                       ),
                       const SizedBox(height: 8),
+                      
+                      // Status Badge display
                       Container(
+                        width: double.infinity,
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: statusBadgeColor.withValues(alpha: 0.4)),
+                        ),
+                        child: Text(
+                          "Status: $statusBadgeText",
+                          style: TextStyle(fontSize: 11, color: statusBadgeColor, fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Direct Action Buttons for AFK / ACTIVE / AUTO / Custom
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
+                              await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
+                                'customStatus': 'AFK',
+                              }, SetOptions(merge: true));
+                            },
+                            icon: const Icon(Icons.pause_circle_filled, size: 12, color: Colors.white),
+                            label: const Text("Tvinga AFK", style: TextStyle(fontSize: 10, fontFamily: 'MedievalSharp')),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFC62828),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
+                              await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
+                                'customStatus': 'ACTIVE',
+                              }, SetOptions(merge: true));
+                            },
+                            icon: const Icon(Icons.play_circle_fill, size: 12, color: Colors.black),
+                            label: const Text("Tvinga ACTIVE", style: TextStyle(fontSize: 10, fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4CAF50),
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
+                              await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
+                                'customStatus': '',
+                              }, SetOptions(merge: true));
+                            },
+                            icon: const Icon(Icons.autorenew, size: 12, color: Colors.black),
+                            label: const Text("Auto (Uppdrag)", style: TextStyle(fontSize: 10, fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF90CAF9),
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: () => _showCustomStatusDialog(admin),
+                            icon: const Icon(Icons.edit_note, size: 12, color: Colors.black),
+                            label: const Text("Anpassad...", style: TextStyle(fontSize: 10, fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFFD700),
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Auto unlock quest order dropdown
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: Colors.black45,
                           borderRadius: BorderRadius.circular(6),
@@ -4598,7 +4815,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text(
-                              "Aktiv i Party efter:",
+                              "Auto-aktiv efter Uppdrag #:",
                               style: TextStyle(fontSize: 11, color: Colors.white70, fontFamily: 'MedievalSharp'),
                             ),
                             DropdownButton<int>(
@@ -4623,8 +4840,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                 if (newVal != null) {
                                   final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
                                   await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
-                                    'username': admin.username,
-                                    'role': admin.role,
                                     'unlockedByQuestOrder': newVal,
                                   }, SetOptions(merge: true));
                                 }
