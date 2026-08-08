@@ -2623,119 +2623,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       ),
                       const SizedBox(height: 20),
 
-                      // Character Profile Panel (using retro photo)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E2125).withOpacity(0.7),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFF8B7355).withOpacity(0.6), width: 1.2),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 85,
-                              height: 85,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0xFFD4AF37), width: 2.5),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(42),
-                                child: Image.asset(
-                                  'assets/images/aragnoz_retro.jpg',
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Icon(Icons.person, size: 40, color: Colors.grey);
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Aragnoz",
-                                    style: TextStyle(
-                                      fontFamily: 'Eagle Lake',
-                                      fontSize: 22,
-                                      color: Color(0xFFE5C158),
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  SizedBox(height: 2),
-                                  Text(
-                                    "Troll Shaman",
-                                    style: TextStyle(
-                                      fontFamily: 'MedievalSharp',
-                                      fontSize: 16,
-                                      color: Color(0xFF1E88E5),
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Icon(Icons.shield, size: 14, color: Color(0xFF8B7355)),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        "Realm: Midgard",
-                                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            )
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Level Display Panel
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [const Color(0xFF2C3238), const Color(0xFF1E2125).withOpacity(0.9)],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF8B7355), width: 1.5),
-                        ),
-                        child: Column(
-                          children: [
-                            const Text(
-                              "CURRENT LEVEL",
-                              style: TextStyle(color: Color(0xFFFFD700), fontSize: 13, letterSpacing: 1.5),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              "$_level",
-                              style: const TextStyle(
-                                fontFamily: 'Cinzel Decorative',
-                                fontSize: 62,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFFE5C158),
-                                shadows: [
-                                  Shadow(color: Colors.black, offset: Offset(3.0, 3.0), blurRadius: 5.0),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              reachedVictory ? "QUEST COMPLETE: ELITE TIER" : "GOAL LEVEL: $_targetLevel",
-                              style: TextStyle(
-                                color: reachedVictory ? const Color(0xFF4CAF50) : const Color(0xFF8B7355),
-                                fontSize: 12,
-                                letterSpacing: 1.0,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
+                      // Hero Character Card with looping video & integrated level banner
+                      AragnozHeroCard(
+                        level: _level,
+                        targetLevel: _targetLevel,
+                        reachedVictory: reachedVictory,
                       ),
                       const SizedBox(height: 24),
 
@@ -5567,6 +5459,274 @@ class _IntroVideoWidgetState extends State<IntroVideoWidget> {
             child: VideoPlayer(_controller),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class AragnozHeroCard extends StatefulWidget {
+  final int level;
+  final int targetLevel;
+  final bool reachedVictory;
+
+  const AragnozHeroCard({
+    super.key,
+    required this.level,
+    required this.targetLevel,
+    required this.reachedVictory,
+  });
+
+  @override
+  State<AragnozHeroCard> createState() => _AragnozHeroCardState();
+}
+
+class _AragnozHeroCardState extends State<AragnozHeroCard> {
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.asset('assets/videos/aragnoz_intro.mp4')
+      ..initialize().then((_) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+          });
+          _controller.setLooping(true);
+          _controller.setVolume(0.0);
+          _controller.play();
+        }
+      }).catchError((error) {
+        debugPrint("Hero video load error: $error");
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+          });
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF16191D),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD4AF37), width: 1.8),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+            blurRadius: 16,
+            spreadRadius: 2,
+          ),
+          const BoxShadow(
+            color: Colors.black54,
+            offset: Offset(0, 6),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 1. Character Looping Video Window
+          SizedBox(
+            height: 240,
+            width: double.infinity,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Video player or fallback image
+                if (_isInitialized && !_hasError)
+                  ClipRect(
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: _controller.value.size.width,
+                        height: _controller.value.size.height,
+                        child: VideoPlayer(_controller),
+                      ),
+                    ),
+                  )
+                else
+                  Image.asset(
+                    'assets/images/aragnoz_retro.jpg',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      color: const Color(0xFF1E2125),
+                      child: const Center(
+                        child: Icon(Icons.person, size: 64, color: Color(0xFFD4AF37)),
+                      ),
+                    ),
+                  ),
+
+                // Gradient overlays for crisp readability
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.35),
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.85),
+                        ],
+                        stops: const [0.0, 0.45, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Character Name & Badges overlaid at the bottom of the video window
+                Positioned(
+                  left: 16,
+                  bottom: 12,
+                  right: 16,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            "Aragnoz",
+                            style: TextStyle(
+                              fontFamily: 'Eagle Lake',
+                              fontSize: 26,
+                              color: Color(0xFFE5C158),
+                              fontWeight: FontWeight.bold,
+                              shadows: [
+                                Shadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 4),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Text(
+                                "Troll Shaman",
+                                style: TextStyle(
+                                  fontFamily: 'MedievalSharp',
+                                  fontSize: 15,
+                                  color: Color(0xFF81D4FA),
+                                  fontWeight: FontWeight.bold,
+                                  shadows: [
+                                    Shadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 3),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: const Color(0xFF8B7355), width: 0.8),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.shield, size: 11, color: Color(0xFFE5C158)),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      "Midgard",
+                                      style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 2. Integrated Level Banner
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF242A30), Color(0xFF16191D)],
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "CURRENT LEVEL",
+                      style: TextStyle(
+                        color: Color(0xFFFFD700),
+                        fontSize: 11,
+                        letterSpacing: 1.5,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'MedievalSharp',
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.reachedVictory ? "QUEST COMPLETE: ELITE TIER" : "GOAL LEVEL: ${widget.targetLevel}",
+                      style: TextStyle(
+                        color: widget.reachedVictory ? const Color(0xFF4CAF50) : const Color(0xFF8B7355),
+                        fontSize: 11,
+                        letterSpacing: 0.8,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    const Text(
+                      "LVL ",
+                      style: TextStyle(
+                        fontFamily: 'MedievalSharp',
+                        fontSize: 16,
+                        color: Color(0xFF8B7355),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      "${widget.level}",
+                      style: const TextStyle(
+                        fontFamily: 'Cinzel Decorative',
+                        fontSize: 44,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFFE5C158),
+                        shadows: [
+                          Shadow(color: Colors.black, offset: Offset(2.0, 2.0), blurRadius: 4.0),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
