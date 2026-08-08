@@ -2332,11 +2332,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final bool reachedVictory = _level >= _targetLevel;
     final double progress = (_level / _targetLevel).clamp(0.0, 1.0);
 
-    final currentQuestIndex = _completedQuestsCount.clamp(0, _quests.length - 1);
-    final currentQuest = _quests[currentQuestIndex];
-    final bool allMainQuestsFinished = _completedQuestsCount >= _quests.length - 1;
+    final int maxQuestIndex = _quests.isNotEmpty ? (_quests.length - 1).clamp(0, 9999) : 0;
+    final currentQuestIndex = _quests.isNotEmpty ? _completedQuestsCount.clamp(0, maxQuestIndex) : 0;
+    final QuestInfo? currentQuest = (_quests.isNotEmpty && currentQuestIndex < _quests.length) ? _quests[currentQuestIndex] : null;
+    final bool allMainQuestsFinished = _quests.isNotEmpty && _completedQuestsCount >= maxQuestIndex;
 
-    final bool isQuestLocked = currentQuest.requiredLevel > 0 && _level < currentQuest.requiredLevel;
+    final bool isQuestLocked = currentQuest != null && currentQuest.requiredLevel > 0 && _level < currentQuest.requiredLevel;
 
     return Scaffold(
       body: Stack(
@@ -2633,33 +2634,40 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       const SizedBox(height: 28),
 
                       // QUEST INSTRUCTIONS & CONTROLS (Replacing manual level entry)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E2125).withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
+                      if (currentQuest == null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          alignment: Alignment.center,
+                          child: const CircularProgressIndicator(color: Color(0xFFD4AF37)),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  allMainQuestsFinished 
-                                      ? "ACTIVE QUEST (Repeatable)"
-                                      : "ACTIVE QUEST (${currentQuestIndex + 1}/${_quests.length - 1})",
-                                  style: const TextStyle(
-                                    color: Color(0xFFE5C158),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.8,
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E2125).withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    allMainQuestsFinished 
+                                        ? "ACTIVE QUEST (Repeatable)"
+                                        : "ACTIVE QUEST (${currentQuestIndex + 1}/${_quests.isEmpty ? 1 : (_quests.length - 1).clamp(1, 9999)})",
+                                    style: const TextStyle(
+                                      color: Color(0xFFE5C158),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.8,
+                                    ),
                                   ),
-                                ),
-                                Row(
-                                  children: [
-                                    if (currentQuest.requiredLevel > 0) ...[
+                                  Row(
+                                    children: [
+                                      if (currentQuest.requiredLevel > 0) ...[
                                       Container(
                                         margin: const EdgeInsets.only(right: 6),
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -2863,6 +2871,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           ],
                         ),
                       ),
+                      ],
                       const SizedBox(height: 16),
 
                       // POTION DRINK CONTAINER
@@ -3062,7 +3071,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       const SizedBox(height: 20),
 
                       // COMPLETED QUESTS LOG
-                      if (_completedQuestsCount > 0) ...[
+                      if (_completedQuestsCount > 0 && _quests.isNotEmpty) ...[
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -3100,8 +3109,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           child: ListView.builder(
                             shrinkWrap: true,
                             padding: const EdgeInsets.all(6),
-                            itemCount: _completedQuestsCount,
+                            itemCount: _completedQuestsCount.clamp(0, _quests.length),
                             itemBuilder: (context, index) {
+                              if (index < 0 || index >= _quests.length) return const SizedBox.shrink();
                               final q = _quests[index];
                               return Material(
                                 color: Colors.transparent,
