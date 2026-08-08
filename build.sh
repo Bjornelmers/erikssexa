@@ -25,8 +25,8 @@ flutter --version
 # Enable Web support
 flutter config --enable-web
 
-# Build release static files
-echo "Building Flutter Web release..."
-flutter build web --release --source-maps
+# Build profile static files with readable unminified names & stack traces
+echo "Building Flutter Web profile..."
+flutter build web --profile
 
 echo "=== BUILD COMPLETE! ==="

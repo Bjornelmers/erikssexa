@@ -535,11 +535,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             }
           }
           if (defaultDesc.isEmpty) {
-            defaultDesc = data['hint'] as String? ?? '';
+            defaultDesc = data['hint']?.toString() ?? '';
           }
 
           batch.update(doc.reference, {
-            'description': data['description'] as String? ?? defaultDesc,
+            'description': data['description']?.toString() ?? defaultDesc,
             'hint': FieldValue.delete(),
           });
         }
@@ -799,7 +799,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     });
 
     if (completionMessage != null && completionMessage.trim().isNotEmpty) {
-      _showQuestCompletionMessageDialog(completionMessage.trim(), questTitle ?? 'Uppdrag');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _showQuestCompletionMessageDialog(completionMessage.trim(), questTitle ?? 'Uppdrag');
+        }
+      });
     }
   }
 
