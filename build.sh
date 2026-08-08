@@ -27,6 +27,6 @@ flutter config --enable-web
 
 # Build release static files
 echo "Building Flutter Web release..."
-flutter build web --release
+flutter build web --release --source-maps
 
 echo "=== BUILD COMPLETE! ==="

@@ -283,7 +283,7 @@ class _CelebrationEffectState extends State<CelebrationEffect>
 
   @override
   Widget build(BuildContext context) {
-    return Positioned.fill(
+    return SizedBox.expand(
       child: IgnorePointer(
         child: CustomPaint(
           painter: CelebrationPainter(

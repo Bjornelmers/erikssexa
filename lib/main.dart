@@ -10,6 +10,12 @@ import 'custom_particles.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint("=== FLUTTER ERROR ===");
+    debugPrint(details.exceptionAsString());
+    debugPrint(details.stack.toString());
+  };
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -3201,11 +3207,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             ),
           ),
 
-          if (_showQuestConfetti) const CelebrationEffect(),
+          if (_showQuestConfetti) const Positioned.fill(child: CelebrationEffect()),
 
           // Celebration scroll overlay
           if (reachedVictory) ...[
-            const CelebrationEffect(),
+            const Positioned.fill(child: CelebrationEffect()),
             Positioned.fill(
               child: Container(
                 color: Colors.black.withOpacity(0.75),
