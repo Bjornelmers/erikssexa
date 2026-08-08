@@ -843,6 +843,103 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
+  void _showCompletedQuestDetails(QuestInfo q) {
+    final bool hasVideoUnlocked = _shownLevelVideos.contains(500) || _level >= 500;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2125),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFD4AF37), width: 2),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF4CAF50)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  q.title,
+                  style: const TextStyle(
+                    fontFamily: 'MedievalSharp',
+                    color: Color(0xFFE5C158),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Klarat uppdrag! Belöning: +${q.rewardLevels} Levlar",
+                style: const TextStyle(color: Colors.grey, fontSize: 13, fontFamily: 'MedievalSharp'),
+              ),
+              if (q.description.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  q.description,
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+              ],
+              if (q.completionMessage.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF121417),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFD4AF37).withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    "📜 Meddelande: ${q.completionMessage}",
+                    style: const TextStyle(
+                      fontFamily: 'Cinzel',
+                      color: Color(0xFFFFD700),
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+              if (hasVideoUnlocked) ...[
+                const SizedBox(height: 16),
+                Center(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFD700),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showLevelVideoModal('assets/videos/ding500.mp4', 'LEVEL 500 - REPLAY');
+                    },
+                    icon: const Icon(Icons.play_circle_fill, size: 20),
+                    label: const Text(
+                      "Spela Level 500 Film 🎬",
+                      style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Stäng", style: TextStyle(color: Colors.grey)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // Secrets & Bypass
   void _handleBypassClick() {
     if (_state != AdventureState.countdown) return;
@@ -1718,12 +1815,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             ),
           ),
 
-          // Audio control top-right
-          Positioned(
-            top: 20,
-            right: 20,
-            child: _buildAudioButton(),
-          ),
 
           Center(
             child: SingleChildScrollView(
@@ -1888,6 +1979,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
               ),
             ),
           ),
+          Positioned(
+            top: 10,
+            right: 10,
+            child: SafeArea(child: _buildAudioButton()),
+          ),
         ],
       ),
     );
@@ -1928,11 +2024,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       backgroundColor: const Color(0xFF0F1115),
       body: Stack(
         children: [
-          Positioned(
-            top: 20,
-            right: 20,
-            child: _buildAudioButton(),
-          ),
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -2227,6 +2318,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             );
           },
         ),
+        Positioned(
+          top: 10,
+          right: 10,
+          child: SafeArea(child: _buildAudioButton()),
+        ),
       ],
     );
   }
@@ -2269,12 +2365,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             ),
           ),
 
-          // Audio control HUD (top-right)
-          Positioned(
-            top: 20,
-            right: 20,
-            child: _buildAudioButton(),
-          ),
 
           // Main centered content
           Center(
@@ -2973,17 +3063,35 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
                       // COMPLETED QUESTS LOG
                       if (_completedQuestsCount > 0) ...[
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            "COMPLETED QUESTS",
-                            style: TextStyle(color: Color(0xFF8B7355), fontSize: 11, fontWeight: FontWeight.bold),
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "COMPLETED QUESTS (Klicka för info/video)",
+                              style: TextStyle(color: Color(0xFF8B7355), fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                            if (_shownLevelVideos.contains(500) || _level >= 500)
+                              TextButton.icon(
+                                onPressed: () {
+                                  _showLevelVideoModal('assets/videos/ding500.mp4', 'LEVEL 500 - REPLAY');
+                                },
+                                icon: const Icon(Icons.play_circle_fill, size: 16, color: Color(0xFFFFD700)),
+                                label: const Text(
+                                  "Level 500 film 🎬",
+                                  style: TextStyle(fontSize: 11, color: Color(0xFFFFD700), fontFamily: 'MedievalSharp'),
+                                ),
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                          ],
                         ),
                         const SizedBox(height: 8),
                         Container(
                           width: double.infinity,
-                          constraints: const BoxConstraints(maxHeight: 110),
+                          constraints: const BoxConstraints(maxHeight: 140),
                           decoration: BoxDecoration(
                             color: Colors.black.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(6),
@@ -2991,30 +3099,44 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           ),
                           child: ListView.builder(
                             shrinkWrap: true,
-                            padding: const EdgeInsets.all(8),
+                            padding: const EdgeInsets.all(6),
                             itemCount: _completedQuestsCount,
                             itemBuilder: (context, index) {
                               final q = _quests[index];
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF4CAF50), size: 16),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      q.title,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey,
-                                        decoration: TextDecoration.lineThrough,
-                                      ),
+                              return Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () {
+                                    _showCompletedQuestDetails(q);
+                                  },
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF4CAF50), size: 16),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            q.title,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                              decoration: TextDecoration.lineThrough,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          "+${q.rewardLevels} Lvl",
+                                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        const Icon(Icons.info_outline, size: 16, color: Color(0xFFD4AF37)),
+                                      ],
                                     ),
-                                    const Spacer(),
-                                    Text(
-                                      "+${q.rewardLevels} Levels",
-                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               );
                             },
@@ -3189,7 +3311,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                 ),
               ),
             ),
-          ]
+          ],
+          Positioned(
+            top: 10,
+            right: 10,
+            child: SafeArea(child: _buildAudioButton()),
+          ),
         ],
       ),
     );
@@ -4611,23 +4738,43 @@ class _LevelVideoDialogState extends State<_LevelVideoDialog> {
                 color: Color(0xFF1E2125),
                 borderRadius: BorderRadius.vertical(bottom: Radius.circular(14)),
               ),
-              child: Center(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD4AF37),
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFE5C158),
+                      side: const BorderSide(color: Color(0xFFE5C158)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                    onPressed: () {
+                      _controller.seekTo(Duration.zero);
+                      _controller.play();
+                    },
+                    icon: const Icon(Icons.replay_rounded),
+                    label: const Text(
+                      "Spela igen 🔄",
+                      style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
                   ),
-                  onPressed: () {
-                    widget.onClose();
-                    Navigator.of(context).pop();
-                  },
-                  icon: const Icon(Icons.check),
-                  label: const Text(
-                    "Fortsätt äventyret! ⚔️",
-                    style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold, fontSize: 16),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD4AF37),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                    onPressed: () {
+                      widget.onClose();
+                      Navigator.of(context).pop();
+                    },
+                    icon: const Icon(Icons.check),
+                    label: const Text(
+                      "Fortsätt äventyret! ⚔️",
+                      style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
           ],
