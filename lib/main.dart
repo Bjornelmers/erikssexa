@@ -2153,6 +2153,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
               ),
             ),
           ),
+          Positioned(
+            top: 10,
+            right: 10,
+            child: SafeArea(child: _buildAudioButton()),
+          ),
         ],
       ),
     );
@@ -2174,180 +2179,174 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           ),
         ),
         const SizedBox(height: 8),
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: quest.subquests.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 10),
-          itemBuilder: (context, index) {
-            final sub = quest.subquests[index];
-            final subKey = "${quest.id}_${sub.id}";
-            final isDone = _completedSubQuestKeys.contains(subKey);
+        for (int index = 0; index < quest.subquests.length; index++) ...[
+          if (index > 0) const SizedBox(height: 10),
+          Builder(
+            builder: (context) {
+              final sub = quest.subquests[index];
+              final subKey = "${quest.id}_${sub.id}";
+              final isDone = _completedSubQuestKeys.contains(subKey);
 
-            return Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isDone
-                    ? const Color(0xFF1B2E1D).withValues(alpha: 0.6)
-                    : const Color(0xFF0F1115).withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: isDone ? const Color(0xFF4CAF50) : const Color(0xFF8B7355),
-                  width: 1.2,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          "${index + 1}. ${sub.title}",
-                          style: TextStyle(
-                            fontFamily: 'MedievalSharp',
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: isDone ? const Color(0xFF81C784) : Colors.white,
-                            decoration: isDone ? TextDecoration.lineThrough : null,
-                          ),
-                        ),
-                      ),
-                      if (sub.rewardLevels > 0)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD4AF37).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: const Color(0xFFD4AF37), width: 0.8),
-                          ),
-                          child: Text(
-                            "+${sub.rewardLevels} Lvl",
-                            style: const TextStyle(
-                              color: Color(0xFFFFD700),
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                    ],
+              return Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDone
+                      ? const Color(0xFF1B2E1D).withValues(alpha: 0.6)
+                      : const Color(0xFF0F1115).withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isDone ? const Color(0xFF4CAF50) : const Color(0xFF8B7355),
+                    width: 1.2,
                   ),
-                  if (sub.description.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      sub.description,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDone ? Colors.grey.shade500 : Colors.grey.shade300,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  if (isDone)
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Row(
-                      children: const [
-                        Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 16),
-                        SizedBox(width: 6),
-                        Text(
-                          "Delmål avklarat!",
-                          style: TextStyle(
-                            color: Color(0xFF81C784),
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: 'MedievalSharp',
-                          ),
-                        ),
-                      ],
-                    )
-                  else ...[
-                    // Autofill button for subquest
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _getSubQuestController(subKey).text = sub.password;
-                          });
-                        },
-                        icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
-                        label: const Text(
-                          "Autofill password (tillfällig knapp för testare)",
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFFE5C158),
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Expanded(
-                          child: Container(
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: Colors.black,
-                              border: Border.all(color: const Color(0xFF8B7355), width: 1.0),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: TextField(
-                              controller: _getSubQuestController(subKey),
-                              style: const TextStyle(
-                                color: Color(0xFFE5C158),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                              decoration: const InputDecoration(
-                                hintText: "Enter Sub-Quest Password",
-                                hintStyle: TextStyle(color: Colors.grey, fontSize: 11),
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                isDense: true,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () => _submitSubQuestPassword(quest, sub),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFE5C158),
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          child: const Text(
-                            "COMPLETE",
+                          child: Text(
+                            "${index + 1}. ${sub.title}",
                             style: TextStyle(
+                              fontFamily: 'MedievalSharp',
+                              fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                              letterSpacing: 0.5,
+                              color: isDone ? const Color(0xFF81C784) : Colors.white,
+                              decoration: isDone ? TextDecoration.lineThrough : null,
                             ),
                           ),
                         ),
+                        if (sub.rewardLevels > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFD4AF37).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: const Color(0xFFD4AF37), width: 0.8),
+                            ),
+                            child: Text(
+                              "+${sub.rewardLevels} Lvl",
+                              style: const TextStyle(
+                                color: Color(0xFFFFD700),
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
+                    if (sub.description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        sub.description,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDone ? Colors.grey.shade500 : Colors.grey.shade300,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    if (isDone)
+                      Row(
+                        children: const [
+                          Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            "Delmål avklarat!",
+                            style: TextStyle(
+                              color: Color(0xFF81C784),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'MedievalSharp',
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      // Autofill button for subquest
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _getSubQuestController(subKey).text = sub.password;
+                            });
+                          },
+                          icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
+                          label: const Text(
+                            "Autofill password (tillfällig knapp för testare)",
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFFE5C158),
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                border: Border.all(color: const Color(0xFF8B7355), width: 1.0),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: TextField(
+                                controller: _getSubQuestController(subKey),
+                                style: const TextStyle(
+                                  color: Color(0xFFE5C158),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                                decoration: const InputDecoration(
+                                  hintText: "Enter Sub-Quest Password",
+                                  hintStyle: TextStyle(color: Colors.grey, fontSize: 11),
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                  isDense: true,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () => _submitSubQuestPassword(quest, sub),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFE5C158),
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                            child: const Text(
+                              "COMPLETE",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
-                ],
-              ),
-            );
-          },
-        ),
-        Positioned(
-          top: 10,
-          right: 10,
-          child: SafeArea(child: _buildAudioButton()),
-        ),
+                ),
+              );
+            },
+          ),
+        ],
       ],
     );
   }
@@ -3131,50 +3130,55 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(color: const Color(0xFF8B7355).withOpacity(0.4), width: 1.0),
                           ),
-                          child: ListView.builder(
-                            shrinkWrap: true,
+                          child: SingleChildScrollView(
                             padding: const EdgeInsets.all(6),
-                            itemCount: _completedQuestsCount.clamp(0, _quests.length),
-                            itemBuilder: (context, index) {
-                              if (index < 0 || index >= _quests.length) return const SizedBox.shrink();
-                              final q = _quests[index];
-                              return Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: () {
-                                    _showCompletedQuestDetails(q);
-                                  },
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF4CAF50), size: 16),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            q.title,
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey,
-                                              decoration: TextDecoration.lineThrough,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (int index = 0; index < _completedQuestsCount.clamp(0, _quests.length); index++)
+                                  Builder(
+                                    builder: (context) {
+                                      final q = _quests[index];
+                                      return Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          onTap: () {
+                                            _showCompletedQuestDetails(q);
+                                          },
+                                          borderRadius: BorderRadius.circular(4),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+                                            child: Row(
+                                              children: [
+                                                const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF4CAF50), size: 16),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    q.title,
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.grey,
+                                                      decoration: TextDecoration.lineThrough,
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  "+${q.rewardLevels} Lvl",
+                                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                const Icon(Icons.info_outline, size: 16, color: Color(0xFFD4AF37)),
+                                              ],
                                             ),
-                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          "+${q.rewardLevels} Lvl",
-                                          style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        const Icon(Icons.info_outline, size: 16, color: Color(0xFFD4AF37)),
-                                      ],
-                                    ),
+                                      );
+                                    },
                                   ),
-                                ),
-                              );
-                            },
+                              ],
+                            ),
                           ),
                         ),
                       ],
