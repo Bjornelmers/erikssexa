@@ -1116,19 +1116,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // Quest Verification
   void _submitQuestPassword() {
-    if (_isAdmin && !_isSuperAdmin) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Color(0xFFC62828),
-          content: Text(
-            "Åskådarläge: Administatörer kan inte klara uppdrag.",
-            style: TextStyle(fontFamily: 'MedievalSharp', color: Colors.white),
-          ),
-        ),
-      );
-      return;
-    }
-
     final inputPassword = _questPasswordController.text.trim();
     if (inputPassword.isEmpty) return;
 
@@ -1217,19 +1204,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _submitSubQuestPassword(QuestInfo quest, SubQuestInfo sub) {
-    if (_isAdmin && !_isSuperAdmin) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Color(0xFFC62828),
-          content: Text(
-            "Åskådarläge: Administatörer kan inte klara delmål.",
-            style: TextStyle(fontFamily: 'MedievalSharp', color: Colors.white),
-          ),
-        ),
-      );
-      return;
-    }
-
     if (quest.requiredLevel > 0 && _level < quest.requiredLevel) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1460,13 +1434,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     foregroundColor: Colors.black,
                   ),
                   onPressed: () {
-                    if (_isAdmin && !_isSuperAdmin) {
-                      setDialogState(() {
-                        dialogError = "Åskådarläge: Administatörer kan inte dricka potions.";
-                      });
-                      return;
-                    }
-
                     final rawInput = _potionPasswordController.text.trim();
                     
                     PotionSecretInfo? matchedSecret;
@@ -1755,13 +1722,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _completeBonusQuest(BonusQuestInfo bonus, String rawInput, StateSetter setDialogState, Function(String) setDialogError) {
-    if (_isAdmin && !_isSuperAdmin) {
-      setDialogState(() {
-        setDialogError("Åskådarläge: Administratörer kan inte klara uppdrag.");
-      });
-      return;
-    }
-
     if (bonus.checkPassword(rawInput)) {
       final reward = bonus.rewardLevels;
       final oldLevel = _level;
@@ -2564,8 +2524,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                               Expanded(
                                 child: Text(
                                   _isSuperAdmin
-                                      ? "SUPERADMINLÄGE\n(Kan se status & hantera admins/uppdrag/potions)"
-                                      : "ÅSKÅDAR- / ADMINLÄGE\n(Kan se status, men ej klara uppdrag/potions)",
+                                      ? "SUPERADMINLÄGE\n(Full access & hantera admins/uppdrag/potions)"
+                                      : "ADMINLÄGE\n(Full access & admin-meny)",
                                   style: TextStyle(
                                     fontFamily: 'MedievalSharp',
                                     fontSize: 11,
