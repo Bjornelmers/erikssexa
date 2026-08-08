@@ -1078,7 +1078,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // Quest Verification
   void _submitQuestPassword() {
-    if (_isAdmin) {
+    if (_isAdmin && !_isSuperAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Color(0xFFC62828),
@@ -1179,7 +1179,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _submitSubQuestPassword(QuestInfo quest, SubQuestInfo sub) {
-    if (_isAdmin) {
+    if (_isAdmin && !_isSuperAdmin) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: Color(0xFFC62828),
@@ -1422,7 +1422,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     foregroundColor: Colors.black,
                   ),
                   onPressed: () {
-                    if (_isAdmin) {
+                    if (_isAdmin && !_isSuperAdmin) {
                       setDialogState(() {
                         dialogError = "Åskådarläge: Administatörer kan inte dricka potions.";
                       });
@@ -1717,7 +1717,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _completeBonusQuest(BonusQuestInfo bonus, String rawInput, StateSetter setDialogState, Function(String) setDialogError) {
-    if (_isAdmin) {
+    if (_isAdmin && !_isSuperAdmin) {
       setDialogState(() {
         setDialogError("Åskådarläge: Administratörer kan inte klara uppdrag.");
       });
