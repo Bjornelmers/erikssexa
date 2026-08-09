@@ -866,12 +866,25 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _checkLevelMilestoneVideos(int oldLevel, int newLevel) {
+    bool saveNeeded = false;
     if (oldLevel < 500 && newLevel >= 500 && !_shownLevelVideos.contains(500)) {
       _shownLevelVideos.add(500);
-      _saveShownLevelVideos();
+      saveNeeded = true;
+      if (newLevel < 1000) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showLevelVideoModal('assets/videos/ding500.mp4', 'LEVEL 500 PASSERAD!');
+        });
+      }
+    }
+    if (oldLevel < 1000 && newLevel >= 1000 && !_shownLevelVideos.contains(1000)) {
+      _shownLevelVideos.add(1000);
+      saveNeeded = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showLevelVideoModal('assets/videos/ding500.mp4', 'LEVEL 500 PASSERAD!');
+        _showLevelVideoModal('assets/videos/ding1000.MOV', 'LEVEL 1000 PASSERAD!');
       });
+    }
+    if (saveNeeded) {
+      _saveShownLevelVideos();
     }
   }
 
@@ -975,8 +988,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _showCompletedQuestDetails(QuestInfo q) {
-    final bool hasVideoUnlocked = _shownLevelVideos.contains(500) && _level >= 500;
-
     showDialog(
       context: context,
       builder: (context) {
@@ -1037,25 +1048,48 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                   ),
                 ),
               ],
-              if (hasVideoUnlocked) ...[
+              if ((_shownLevelVideos.contains(500) && _level >= 500) || (_shownLevelVideos.contains(1000) && _level >= 1000)) ...[
                 const SizedBox(height: 16),
-                Center(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD700),
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    ),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showLevelVideoModal('assets/videos/ding500.mp4', 'LEVEL 500 - REPLAY');
-                    },
-                    icon: const Icon(Icons.play_circle_fill, size: 20),
-                    label: const Text(
-                      "Spela Level 500 Film 🎬",
-                      style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    if (_shownLevelVideos.contains(500) && _level >= 500)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFFD700),
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _showLevelVideoModal('assets/videos/ding500.mp4', 'LEVEL 500 - REPLAY');
+                        },
+                        icon: const Icon(Icons.play_circle_fill, size: 18),
+                        label: const Text(
+                          "Spela Level 500 Film 🎬",
+                          style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                    if (_shownLevelVideos.contains(1000) && _level >= 1000)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFFD700),
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _showLevelVideoModal('assets/videos/ding1000.MOV', 'LEVEL 1000 - REPLAY');
+                        },
+                        icon: const Icon(Icons.play_circle_fill, size: 18),
+                        label: const Text(
+                          "Spela Level 1000 Film 🎬",
+                          style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ],
@@ -1293,10 +1327,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _cheatToVictory() {
+    final oldLevel = _level;
     setState(() {
       _level = _targetLevel;
     });
     _saveLevel(_targetLevel);
+    _checkLevelMilestoneVideos(oldLevel, _targetLevel);
     AudioController.instance.playVictorySound();
   }
 
@@ -3166,22 +3202,45 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                               "COMPLETED QUESTS (Klicka för info/video)",
                               style: TextStyle(color: Color(0xFF8B7355), fontSize: 11, fontWeight: FontWeight.bold),
                             ),
-                            if (_shownLevelVideos.contains(500) && _level >= 500)
-                              TextButton.icon(
-                                onPressed: () {
-                                  _showLevelVideoModal('assets/videos/ding500.mp4', 'LEVEL 500 - REPLAY');
-                                },
-                                icon: const Icon(Icons.play_circle_fill, size: 16, color: Color(0xFFFFD700)),
-                                label: const Text(
-                                  "Level 500 film 🎬",
-                                  style: TextStyle(fontSize: 11, color: Color(0xFFFFD700), fontFamily: 'MedievalSharp'),
-                                ),
-                                style: TextButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                              ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_shownLevelVideos.contains(500) && _level >= 500) ...[
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      _showLevelVideoModal('assets/videos/ding500.mp4', 'LEVEL 500 - REPLAY');
+                                    },
+                                    icon: const Icon(Icons.play_circle_fill, size: 16, color: Color(0xFFFFD700)),
+                                    label: const Text(
+                                      "Level 500 film 🎬",
+                                      style: TextStyle(fontSize: 11, color: Color(0xFFFFD700), fontFamily: 'MedievalSharp'),
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                if (_shownLevelVideos.contains(1000) && _level >= 1000)
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      _showLevelVideoModal('assets/videos/ding1000.MOV', 'LEVEL 1000 - REPLAY');
+                                    },
+                                    icon: const Icon(Icons.play_circle_fill, size: 16, color: Color(0xFFFFD700)),
+                                    label: const Text(
+                                      "Level 1000 film 🎬",
+                                      style: TextStyle(fontSize: 11, color: Color(0xFFFFD700), fontFamily: 'MedievalSharp'),
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),
