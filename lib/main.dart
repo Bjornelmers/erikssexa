@@ -323,9 +323,15 @@ class MainAdventureManager extends StatefulWidget {
 }
 
 class _MainAdventureManagerState extends State<MainAdventureManager> {
+  static const String _masterBypassCode = '32167';
+  static const String _gameStateDocId = 'aragnoz';
+
   AdventureState _state = AdventureState.countdown;
   bool _isAdmin = false;
   bool _isSuperAdmin = false;
+  bool _hasLoggedInBefore = false;
+  bool _localCountdownBypassed = false;
+  AdventureState _remoteAdventureState = AdventureState.countdown;
   String _currentUsername = "";
   int _level = 50; // DAoC character starts at max level 50
   final int _targetLevel = 1337;
@@ -509,13 +515,19 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   @override
   void initState() {
     super.initState();
-    _loadState();
+    _loadLocalSessionState();
+    _listenToGameState();
     _initCountdown();
     _listenToQuests();
     _listenToPotionSecrets();
     _listenToBonusQuests();
     _listenToAdminUsers();
   }
+
+  DocumentReference<Map<String, dynamic>> get _gameStateRef =>
+      FirebaseFirestore.instance.collection('game_state').doc(_gameStateDocId);
+
+  bool _canDriveAragnozProgress() => _isSuperAdmin;
 
   @override
   void dispose() {
@@ -756,9 +768,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           if (diff.isNegative || diff.inSeconds <= 0) {
             _timeRemaining = Duration.zero;
             _countdownTimer?.cancel();
+            if (_remoteAdventureState == AdventureState.countdown) {
+              _saveAdventureState(AdventureState.login);
+            }
             if (_state == AdventureState.countdown) {
               _state = AdventureState.login;
-              _saveAdventureState(AdventureState.login);
               _startMusic();
             }
           } else {
@@ -769,47 +783,137 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     });
   }
 
-  // Load state locally from SharedPreferences
-  Future<void> _loadState() async {
+  // Local session + per-device UX state (not shared across devices)
+  Future<void> _loadLocalSessionState() async {
     final prefs = await SharedPreferences.getInstance();
-    final level = prefs.getInt('aragnoz_level') ?? 50;
-    final savedStateIndex = prefs.getInt('adventure_state') ?? AdventureState.countdown.index;
     final isAdmin = prefs.getBool('is_admin') ?? false;
     final isSuperAdmin = prefs.getBool('is_super_admin') ?? false;
     final currentUsername = prefs.getString('current_username') ?? "";
-    final completedQuests = prefs.getInt('completed_quests_count') ?? 0;
-    final completedSubQuestsList = prefs.getStringList('completed_subquests') ?? [];
-    final completedBonusQuestsList = prefs.getStringList('completed_bonus_quests') ?? [];
-    final usedPotionSecretsList = prefs.getStringList('used_potion_secrets') ?? [];
+    final hasLoggedInBefore = prefs.getBool('has_logged_in_before') ?? false;
+    final countdownBypassedLocally = prefs.getBool('countdown_bypassed_locally') ?? false;
     final shownVideosList = prefs.getStringList('shown_level_videos') ?? [];
-    
-    AdventureState savedState = AdventureState.values[savedStateIndex];
-
-    if (savedState == AdventureState.countdown) {
-      if (DateTime.now().isAfter(_targetDate)) {
-        savedState = AdventureState.login;
-      }
-    }
 
     if (mounted) {
       setState(() {
-        _level = level;
-        _state = savedState;
         _isAdmin = isAdmin;
         _isSuperAdmin = isSuperAdmin;
         _currentUsername = currentUsername;
-        _completedQuestsCount = completedQuests;
-        _completedSubQuestKeys = completedSubQuestsList.toSet();
-        _completedBonusQuestKeys = completedBonusQuestsList.toSet();
-        _usedPotionSecretKeys = usedPotionSecretsList.toSet();
+        _hasLoggedInBefore = hasLoggedInBefore || currentUsername.isNotEmpty;
+        _localCountdownBypassed = countdownBypassedLocally;
         _shownLevelVideos = shownVideosList.map((e) => int.tryParse(e) ?? 0).where((e) => e > 0).toSet();
-        _isLoading = false;
       });
     }
+  }
 
-    if (!_audioInitialized && (savedState == AdventureState.login || savedState == AdventureState.grinding || savedState == AdventureState.admin)) {
+  void _listenToGameState() {
+    _stateSubscription = _gameStateRef.snapshots().listen((snapshot) async {
+      if (!snapshot.exists) {
+        final prefs = await SharedPreferences.getInstance();
+        final initialState = <String, dynamic>{
+          'level': prefs.getInt('aragnoz_level') ?? 50,
+          'adventureState': prefs.getInt('adventure_state') ?? AdventureState.countdown.index,
+          'completedQuestsCount': prefs.getInt('completed_quests_count') ?? 0,
+          'completedSubQuests': prefs.getStringList('completed_subquests') ?? <String>[],
+          'completedBonusQuests': prefs.getStringList('completed_bonus_quests') ?? <String>[],
+          'usedPotionSecrets': prefs.getStringList('used_potion_secrets') ?? <String>[],
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+        try {
+          await _gameStateRef.set(initialState);
+        } catch (e) {
+          debugPrint("Failed to seed game_state: $e");
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
+        }
+        return;
+      }
+
+      if (!mounted) return;
+      _applyRemoteGameState(snapshot.data()!);
+    }, onError: (error) {
+      debugPrint("Error listening to game_state: $error");
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    });
+  }
+
+  Set<String> _stringListFieldToSet(dynamic raw) {
+    if (raw is! List) return {};
+    return raw.map((e) => e.toString()).toSet();
+  }
+
+  AdventureState _resolveDisplayAdventureState(AdventureState remoteState, AdventureState currentLocal) {
+    AdventureState effective = remoteState;
+    if (remoteState == AdventureState.countdown && _localCountdownBypassed && !DateTime.now().isAfter(_targetDate)) {
+      effective = AdventureState.login;
+    }
+    if (_localCountdownBypassed && effective.index < currentLocal.index) {
+      return currentLocal;
+    }
+    return effective.index >= currentLocal.index ? effective : currentLocal;
+  }
+
+  Future<void> _setLocalCountdownBypassed(bool value) async {
+    _localCountdownBypassed = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('countdown_bypassed_locally', value);
+  }
+
+  void _applyRemoteGameState(Map<String, dynamic> rawData) {
+    final data = _toMapStringDynamic(rawData);
+    final level = _parseInt(data['level'], 50);
+    final adventureStateIndex = _parseInt(data['adventureState'] ?? data['adventure_state'], AdventureState.countdown.index);
+    final completedQuests = _parseInt(data['completedQuestsCount'] ?? data['completed_quests_count'], 0);
+    final subs = _stringListFieldToSet(data['completedSubQuests'] ?? data['completed_subquests']);
+    final bonus = _stringListFieldToSet(data['completedBonusQuests'] ?? data['completed_bonus_quests']);
+    final potions = _stringListFieldToSet(data['usedPotionSecrets'] ?? data['used_potion_secrets']);
+
+    AdventureState remoteState = AdventureState.values[adventureStateIndex.clamp(0, AdventureState.grinding.index)];
+    if (remoteState == AdventureState.countdown && DateTime.now().isAfter(_targetDate)) {
+      remoteState = AdventureState.login;
+    }
+
+    if (remoteState != AdventureState.countdown) {
+      _localCountdownBypassed = false;
+      unawaited(_setLocalCountdownBypassed(false));
+    }
+
+    setState(() {
+      _remoteAdventureState = remoteState;
+      _level = level;
+      _completedQuestsCount = completedQuests;
+      _completedSubQuestKeys = subs;
+      _completedBonusQuestKeys = bonus;
+      _usedPotionSecretKeys = potions;
+      if (_state != AdventureState.admin) {
+        _state = _resolveDisplayAdventureState(remoteState, _state);
+      }
+      _isLoading = false;
+    });
+
+    if (!_audioInitialized && (_state == AdventureState.login || _state == AdventureState.grinding)) {
       _audioInitialized = true;
       _startMusic();
+    }
+  }
+
+  Future<void> _writeGameStateToFirestore([Map<String, dynamic>? partial]) async {
+    final data = partial ??
+        {
+          'level': _level,
+          'adventureState': _state == AdventureState.admin ? AdventureState.grinding.index : _state.index,
+          'completedQuestsCount': _completedQuestsCount,
+          'completedSubQuests': _completedSubQuestKeys.toList(),
+          'completedBonusQuests': _completedBonusQuestKeys.toList(),
+          'usedPotionSecrets': _usedPotionSecretKeys.toList(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+    try {
+      await _gameStateRef.set(data, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Failed to write game_state: $e");
     }
   }
 
@@ -825,39 +929,25 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     await prefs.setBool('is_admin', isAdmin);
     await prefs.setBool('is_super_admin', isSuperAdmin);
     await prefs.setString('current_username', currentUsername);
+    if (currentUsername.isNotEmpty) {
+      await prefs.setBool('has_logged_in_before', true);
+      _hasLoggedInBefore = true;
+    }
   }
 
   Future<void> _saveAdventureState(AdventureState state) async {
-    // Save state locally per device
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('adventure_state', state.index);
-  }
-
-  Future<void> _saveLevel(int level) async {
-    // Save level locally per device
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('aragnoz_level', level);
-  }
-
-  Future<void> _saveCompletedQuests(int count) async {
-    // Save completed quests count locally per device
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('completed_quests_count', count);
-  }
-
-  Future<void> _saveCompletedSubQuests() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('completed_subquests', _completedSubQuestKeys.toList());
-  }
-
-  Future<void> _saveCompletedBonusQuests() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('completed_bonus_quests', _completedBonusQuestKeys.toList());
-  }
-
-  Future<void> _saveUsedPotionSecrets() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('used_potion_secrets', _usedPotionSecretKeys.toList());
+    if (state == AdventureState.admin) return;
+    final globalEventStarted =
+        DateTime.now().isAfter(_targetDate) || _remoteAdventureState != AdventureState.countdown;
+    if (!globalEventStarted) return;
+    try {
+      await _gameStateRef.set({
+        'adventureState': state.index,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Failed to save adventure state: $e");
+    }
   }
 
   Future<void> _saveShownLevelVideos() async {
@@ -1105,21 +1195,23 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
-  // Secrets & Bypass
+  // Countdown bypass: local only — does not change Firestore for other devices
   void _handleBypassClick() {
-    if (_state != AdventureState.countdown) return;
+    if (_state != AdventureState.countdown || !_hasLoggedInBefore) return;
+    final newClicks = _bypassClicks + 1;
     setState(() {
-      _bypassClicks++;
-      if (_bypassClicks >= 5) {
+      _bypassClicks = newClicks;
+      if (newClicks >= 5) {
+        _localCountdownBypassed = true;
         _state = AdventureState.login;
-        _saveAdventureState(AdventureState.login);
-        _countdownTimer?.cancel();
-        
-        // Play music immediately since this click counts as user interaction
+        // Keep timer running so this device can still publish global login at target time
         AudioController.instance.playThemeMusic();
         _audioInitialized = true;
       }
     });
+    if (newClicks >= 5) {
+      unawaited(_setLocalCountdownBypassed(true));
+    }
   }
 
   // Login verification
@@ -1140,10 +1232,14 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         _isAdmin = isAdminUser;
         _isSuperAdmin = isSuperAdminUser;
         _currentUsername = user;
-        _state = AdventureState.intro;
+        if (_state == AdventureState.login) {
+          _state = AdventureState.intro;
+        }
       });
       _saveAdminState(isAdminUser, isSuperAdmin: isSuperAdminUser, currentUsername: user);
-      _saveAdventureState(AdventureState.intro);
+      if (_state == AdventureState.intro) {
+        _saveAdventureState(AdventureState.intro);
+      }
       AudioController.instance.playLevelUpSound();
       _startMusic(); // Ensure music plays
     } else {
@@ -1153,19 +1249,21 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     }
   }
 
-  // Quest Verification
+  // Quest Verification (superadmin only)
   void _submitQuestPassword() {
+    if (!_canDriveAragnozProgress()) return;
+
     final inputPassword = _questPasswordController.text.trim();
     if (inputPassword.isEmpty) return;
 
-    // Special master bypass password to reach victory instantly
-    if (inputPassword == "32167") {
+    // Special master bypass password to reach victory instantly (superadmin only)
+    if (inputPassword == _masterBypassCode) {
       final oldLevel = _level;
       setState(() {
         _questError = "";
         _questPasswordController.clear();
       });
-      
+
       // Log bypass usage to Firestore
       try {
         FirebaseFirestore.instance.collection('quest_logs').add({
@@ -1173,7 +1271,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           'quest_title': 'Master Bypass Code Used',
           'old_level': oldLevel,
           'new_level': _targetLevel,
-          'password_used': '32167',
+          'password_used': _masterBypassCode,
         });
       } catch (e) {
         debugPrint("Failed to write bypass log to Firestore: $e");
@@ -1209,8 +1307,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         }
       });
 
-      _saveLevel(newLevel);
-      _saveCompletedQuests(_completedQuestsCount);
+      _writeGameStateToFirestore();
 
       // Log successful quest completion to Firestore
       try {
@@ -1243,6 +1340,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _submitSubQuestPassword(QuestInfo quest, SubQuestInfo sub) {
+    if (!_canDriveAragnozProgress()) return;
+
     if (quest.requiredLevel > 0 && _level < quest.requiredLevel) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1261,7 +1360,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final inputPassword = controller.text.trim();
     if (inputPassword.isEmpty) return;
 
-    if (sub.checkPassword(inputPassword) || inputPassword == "32167") {
+    if (sub.checkPassword(inputPassword) || (_isSuperAdmin && inputPassword == _masterBypassCode)) {
       final oldLevel = _level;
       final newLevel = _level + sub.rewardLevels;
 
@@ -1292,9 +1391,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         }
       });
 
-      _saveLevel(_level);
-      _saveCompletedQuests(_completedQuestsCount);
-      _saveCompletedSubQuests();
+      _writeGameStateToFirestore();
 
       // Log subquest completion to Firestore
       try {
@@ -1331,12 +1428,14 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     setState(() {
       _level = _targetLevel;
     });
-    _saveLevel(_targetLevel);
+    _writeGameStateToFirestore();
     _checkLevelMilestoneVideos(oldLevel, _targetLevel);
     AudioController.instance.playVictorySound();
   }
 
   void _showDrinkPotionDialog() {
+    if (!_canDriveAragnozProgress()) return;
+
     String dialogError = "";
 
     showDialog(
@@ -1391,40 +1490,40 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     style: TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'MedievalSharp'),
                   ),
                   const SizedBox(height: 8),
-                  // Autofill secret message button for testers
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: () {
-                        setDialogState(() {
-                          final unusedSecret = _potionSecrets.firstWhere(
-                            (s) {
-                              final sKey = s.id.isNotEmpty ? s.id : s.secret.trim().toLowerCase();
-                              final norm = s.secret.trim().toLowerCase();
-                              return !_usedPotionSecretKeys.contains(sKey) && !_usedPotionSecretKeys.contains(norm);
-                            },
-                            orElse: () => _potionSecrets.isNotEmpty ? _potionSecrets.first : PotionSecretInfo(secret: "Potion secret message"),
-                          );
-                          _potionPasswordController.text = unusedSecret.secret;
-                        });
-                      },
-                      icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
-                      label: const Text(
-                        "Autofill secret message (tillfällig knapp för testare)",
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFFE5C158),
-                          decoration: TextDecoration.underline,
+                  if (_isSuperAdmin)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          setDialogState(() {
+                            final unusedSecret = _potionSecrets.firstWhere(
+                              (s) {
+                                final sKey = s.id.isNotEmpty ? s.id : s.secret.trim().toLowerCase();
+                                final norm = s.secret.trim().toLowerCase();
+                                return !_usedPotionSecretKeys.contains(sKey) && !_usedPotionSecretKeys.contains(norm);
+                              },
+                              orElse: () => _potionSecrets.isNotEmpty ? _potionSecrets.first : PotionSecretInfo(secret: "Potion secret message"),
+                            );
+                            _potionPasswordController.text = unusedSecret.secret;
+                          });
+                        },
+                        icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
+                        label: const Text(
+                          "Autofill secret message (superadmin)",
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFE5C158),
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                       ),
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
+                  if (_isSuperAdmin) const SizedBox(height: 10),
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.black,
@@ -1485,9 +1584,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       }
                     }
 
-                    // Master code fallback
-                    if (matchedSecret == null && rawInput == '32167') {
-                      matchedSecret = PotionSecretInfo(secret: '32167', rewardLevels: 10);
+                    // Master code fallback (superadmin only)
+                    if (matchedSecret == null && _isSuperAdmin && rawInput == _masterBypassCode) {
+                      matchedSecret = PotionSecretInfo(secret: _masterBypassCode, rewardLevels: 10);
                     }
 
                     if (matchedSecret != null) {
@@ -1505,7 +1604,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       if (normalizedSecret.isNotEmpty) {
                         _usedPotionSecretKeys.add(normalizedSecret);
                       }
-                      _saveUsedPotionSecrets();
 
                       final reward = matchedSecret.rewardLevels;
                       final oldLevel = _level;
@@ -1513,7 +1611,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       setState(() {
                         _level = newLevel;
                       });
-                      _saveLevel(newLevel);
+                      _writeGameStateToFirestore();
                       
                       // Log potion drink to Firestore
                       try {
@@ -1565,6 +1663,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _showBonusQuestsDialog() {
+    if (!_canDriveAragnozProgress()) return;
+
     String dialogError = "";
 
     showDialog(
@@ -1763,6 +1863,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _completeBonusQuest(BonusQuestInfo bonus, String rawInput, StateSetter setDialogState, Function(String) setDialogError) {
+    if (!_canDriveAragnozProgress()) return;
+
     if (bonus.checkPassword(rawInput)) {
       final reward = bonus.rewardLevels;
       final oldLevel = _level;
@@ -1771,8 +1873,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         _level = newLevel;
         _completedBonusQuestKeys.add(bonus.id);
       });
-      _saveLevel(newLevel);
-      _saveCompletedBonusQuests();
+      _writeGameStateToFirestore();
 
       try {
         FirebaseFirestore.instance.collection('quest_logs').add({
@@ -1817,6 +1918,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _resetCharacter() {
+    if (!_isSuperAdmin) return;
+
     setState(() {
       _level = 50; // Back to starting level 50
       _state = AdventureState.countdown;
@@ -1842,14 +1945,18 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       }
       _initCountdown();
     });
-    _saveLevel(50);
-    _saveCompletedQuests(0);
-    _saveCompletedSubQuests();
-    _saveCompletedBonusQuests();
-    _saveUsedPotionSecrets();
+    _writeGameStateToFirestore({
+      'level': 50,
+      'adventureState': AdventureState.countdown.index,
+      'completedQuestsCount': 0,
+      'completedSubQuests': <String>[],
+      'completedBonusQuests': <String>[],
+      'usedPotionSecrets': <String>[],
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    _setLocalCountdownBypassed(false);
     _saveShownLevelVideos();
     _saveAdminState(false, isSuperAdmin: false);
-    _saveAdventureState(AdventureState.countdown);
     AudioController.instance.toggleMute(); // Reset audio toggle
   }
 
@@ -2398,33 +2505,33 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           ),
                         ],
                       )
-                    else ...[
-                      // Autofill button for subquest
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _getSubQuestController(subKey).text = sub.password;
-                            });
-                          },
-                          icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
-                          label: const Text(
-                            "Autofill password (tillfällig knapp för testare)",
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFFE5C158),
-                              decoration: TextDecoration.underline,
+                    else if (_canDriveAragnozProgress()) ...[
+                      if (_isSuperAdmin)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _getSubQuestController(subKey).text = sub.password;
+                              });
+                            },
+                            icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
+                            label: const Text(
+                              "Autofill password (superadmin)",
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFFE5C158),
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
                           ),
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
+                      if (_isSuperAdmin) const SizedBox(height: 6),
                       Row(
                         children: [
                           Expanded(
@@ -2566,7 +2673,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                 child: Text(
                                   _isSuperAdmin
                                       ? "SUPERADMINLÄGE\n(Full access & hantera admins/uppdrag/potions)"
-                                      : "ADMINLÄGE\n(Full access & admin-meny)",
+                                      : "ADMINLÄGE\n(Spektator – endast superadmin klara uppdrag)",
                                   style: TextStyle(
                                     fontFamily: 'MedievalSharp',
                                     fontSize: 11,
@@ -2831,35 +2938,33 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                               ),
                             ] else if (currentQuest.hasSubquests)
                               _buildSubquestsList(currentQuest)
-                            else ...[
-                              // Autofill password button for testers
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: TextButton.icon(
-                                  onPressed: () {
-                                    setState(() {
-                                      _questPasswordController.text = currentQuest.password;
-                                    });
-                                  },
-                                  icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
-                                  label: const Text(
-                                    "Autofill password (tillfällig knapp för testare)",
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFFE5C158),
-                                      decoration: TextDecoration.underline,
+                            else if (_canDriveAragnozProgress()) ...[
+                              if (_isSuperAdmin)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _questPasswordController.text = currentQuest.password;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.auto_fix_high, size: 14, color: Color(0xFFE5C158)),
+                                    label: const Text(
+                                      "Autofill password (superadmin)",
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFFE5C158),
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                     ),
                                   ),
-                                  style: TextButton.styleFrom(
-                                    padding: EdgeInsets.zero,
-                                    minimumSize: Size.zero,
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 14),
-                              
-                              // Password entry
+                              if (_isSuperAdmin) const SizedBox(height: 14),
                               Row(
                                 children: [
                                   Expanded(
@@ -2908,6 +3013,18 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                     ),
                                   ),
                                 ],
+                              ),
+                            ] else ...[
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: Text(
+                                  "Endast superadmin kan klara uppdrag åt Aragnoz.",
+                                  style: TextStyle(
+                                    fontFamily: 'MedievalSharp',
+                                    fontSize: 12,
+                                    color: Colors.white54,
+                                  ),
+                                ),
                               ),
                             ],
                             
@@ -3013,29 +3130,30 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                     ],
                                   ),
                                   const SizedBox(height: 12),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      onPressed: _showDrinkPotionDialog,
-                                      icon: const Icon(Icons.local_drink, size: 16, color: Colors.black),
-                                      label: const Text(
-                                        "Drick potion (+10 levlar)",
-                                        style: TextStyle(
-                                          fontFamily: 'MedievalSharp',
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.black,
+                                  if (_canDriveAragnozProgress())
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        onPressed: _showDrinkPotionDialog,
+                                        icon: const Icon(Icons.local_drink, size: 16, color: Colors.black),
+                                        label: const Text(
+                                          "Drick potion (+10 levlar)",
+                                          style: TextStyle(
+                                            fontFamily: 'MedievalSharp',
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black,
+                                          ),
                                         ),
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFFFFD700),
-                                        padding: const EdgeInsets.symmetric(vertical: 10),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFFFFD700),
+                                          padding: const EdgeInsets.symmetric(vertical: 10),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
                                 ],
                               ),
                             );
@@ -3139,29 +3257,30 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                     ],
                                   ),
                                   const SizedBox(height: 12),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      onPressed: _showBonusQuestsDialog,
-                                      icon: const Icon(Icons.star, size: 16, color: Colors.black),
-                                      label: const Text(
-                                        "Gör bonusuppdrag (+50 levlar)",
-                                        style: TextStyle(
-                                          fontFamily: 'MedievalSharp',
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.black,
+                                  if (_canDriveAragnozProgress())
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        onPressed: _showBonusQuestsDialog,
+                                        icon: const Icon(Icons.star, size: 16, color: Colors.black),
+                                        label: const Text(
+                                          "Gör bonusuppdrag (+50 levlar)",
+                                          style: TextStyle(
+                                            fontFamily: 'MedievalSharp',
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black,
+                                          ),
                                         ),
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF81D4FA),
-                                        padding: const EdgeInsets.symmetric(vertical: 10),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF81D4FA),
+                                          padding: const EdgeInsets.symmetric(vertical: 10),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
                                 ],
                               ),
                             );
@@ -3304,39 +3423,41 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           ),
                         ),
                       ],
-                      // Reset Button (at the very bottom after scrolling)
-                      const SizedBox(height: 24),
-                      Center(
-                        child: Opacity(
-                          opacity: 0.35,
-                          child: TextButton(
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (context) {
-                                  return AlertDialog(
-                                    backgroundColor: const Color(0xFF1E2125),
-                                    title: const Text("Restart Quest?", style: TextStyle(color: Color(0xFFE5C158), fontFamily: 'MedievalSharp')),
-                                    content: const Text("Reset character? This goes back to countdown screen."),
-                                    actions: [
-                                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD32F2F)),
-                                        onPressed: () {
-                                          Navigator.pop(context);
-                                          _resetCharacter();
-                                        },
-                                        child: const Text("Reset", style: TextStyle(color: Colors.white)),
-                                      )
-                                    ],
-                                  );
-                                },
-                              );
-                            },
-                            child: const Text("RESET QUEST", style: TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 1.0)),
+                      // Reset Button (superadmin only)
+                      if (_isSuperAdmin) ...[
+                        const SizedBox(height: 24),
+                        Center(
+                          child: Opacity(
+                            opacity: 0.35,
+                            child: TextButton(
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (context) {
+                                    return AlertDialog(
+                                      backgroundColor: const Color(0xFF1E2125),
+                                      title: const Text("Restart Quest?", style: TextStyle(color: Color(0xFFE5C158), fontFamily: 'MedievalSharp')),
+                                      content: const Text("Reset character? This goes back to countdown screen."),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD32F2F)),
+                                          onPressed: () {
+                                            Navigator.pop(context);
+                                            _resetCharacter();
+                                          },
+                                          child: const Text("Reset", style: TextStyle(color: Colors.white)),
+                                        )
+                                      ],
+                                    );
+                                  },
+                                );
+                              },
+                              child: const Text("RESET QUEST", style: TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 1.0)),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -3434,34 +3555,36 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                     children: [Icon(Icons.campaign, size: 18), SizedBox(width: 6), Text("BLOW HORN")],
                                   ),
                                 ),
-                                const SizedBox(width: 16),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) {
-                                        return AlertDialog(
-                                          backgroundColor: const Color(0xFF1E2125),
-                                          title: const Text("Restart Shaman Journey?"),
-                                          content: const Text("Return to the countdown screen?"),
-                                          actions: [
-                                            TextButton(onPressed: () => Navigator.pop(context), child: const Text("No")),
-                                            ElevatedButton(
-                                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD4AF37)),
-                                              onPressed: () {
-                                                Navigator.pop(context);
-                                                _resetCharacter();
-                                              },
-                                              child: const Text("Reset", style: TextStyle(color: Colors.black)),
-                                            )
-                                          ],
-                                        );
-                                      },
-                                    );
-                                  },
-                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black),
-                                  child: const Text("RESTART QUEST"),
-                                ),
+                                if (_isSuperAdmin) ...[
+                                  const SizedBox(width: 16),
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) {
+                                          return AlertDialog(
+                                            backgroundColor: const Color(0xFF1E2125),
+                                            title: const Text("Restart Shaman Journey?"),
+                                            content: const Text("Return to the countdown screen?"),
+                                            actions: [
+                                              TextButton(onPressed: () => Navigator.pop(context), child: const Text("No")),
+                                              ElevatedButton(
+                                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD4AF37)),
+                                                onPressed: () {
+                                                  Navigator.pop(context);
+                                                  _resetCharacter();
+                                                },
+                                                child: const Text("Reset", style: TextStyle(color: Colors.black)),
+                                              )
+                                            ],
+                                          );
+                                        },
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black),
+                                    child: const Text("RESTART QUEST"),
+                                  ),
+                                ],
                               ],
                             ),
                           ],
