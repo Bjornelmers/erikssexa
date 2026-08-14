@@ -229,12 +229,18 @@ class PotionSecretInfo {
 }
 
 class BonusQuestInfo {
+  static const String typePassword = 'password';
+  static const String typeGatherFriends = 'gather_friends';
+
   final String id;
   final String title;
   final String password;
   final String description;
   final int rewardLevels;
   final int unlockedByQuestOrder;
+  final String type;
+  final int completionBonusLevels;
+  final String completionMessage;
 
   BonusQuestInfo({
     this.id = '',
@@ -243,17 +249,27 @@ class BonusQuestInfo {
     required this.description,
     this.rewardLevels = 50,
     this.unlockedByQuestOrder = 1,
+    this.type = typePassword,
+    this.completionBonusLevels = 0,
+    this.completionMessage = '',
   });
+
+  bool get isGatherFriends => type == typeGatherFriends || id == 'bonus_gather_friends';
 
   factory BonusQuestInfo.fromFirestore(DocumentSnapshot doc) {
     final data = _toMapStringDynamic(doc.data());
+    final loadedType = data['type']?.toString() ?? typePassword;
+    final isGather = loadedType == typeGatherFriends || doc.id == 'bonus_gather_friends';
     return BonusQuestInfo(
       id: doc.id,
       title: data['title']?.toString() ?? '',
       password: data['password']?.toString() ?? '',
       description: data['description']?.toString() ?? '',
-      rewardLevels: _parseInt(data['rewardLevels'] ?? data['reward_levels'], 50),
+      rewardLevels: _parseInt(data['rewardLevels'] ?? data['reward_levels'], isGather ? 10 : 50),
       unlockedByQuestOrder: _parseInt(data['unlockedByQuestOrder'] ?? data['unlocked_by_quest_order'], 1),
+      type: isGather ? typeGatherFriends : loadedType,
+      completionBonusLevels: _parseInt(data['completionBonusLevels'] ?? data['completion_bonus_levels'], isGather ? 100 : 0),
+      completionMessage: data['completionMessage']?.toString() ?? data['completion_message']?.toString() ?? '',
     );
   }
 
@@ -264,6 +280,9 @@ class BonusQuestInfo {
       'description': description,
       'rewardLevels': rewardLevels,
       'unlockedByQuestOrder': unlockedByQuestOrder,
+      'type': type,
+      'completionBonusLevels': completionBonusLevels,
+      'completionMessage': completionMessage,
     };
   }
 
@@ -349,6 +368,24 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   ];
 
   List<String> get _adminUsernames => _adminUsers.map((a) => a.username.trim().toLowerCase()).toList();
+
+  static const int _gatherFriendsTargetCount = 8;
+  static const String _excludedPartyUsername = 'burqen';
+  static const String _gatherFriendsQuestId = 'bonus_gather_friends';
+
+  static final BonusQuestInfo _defaultGatherFriendsQuest = BonusQuestInfo(
+    id: _gatherFriendsQuestId,
+    title: "Gather your friends!",
+    password: "",
+    rewardLevels: 10,
+    description: "Samla ihop dina vänner! Endast med ett fullt party kan ni grinda dig hela vägen till 1337!",
+    unlockedByQuestOrder: 1,
+    type: BonusQuestInfo.typeGatherFriends,
+    completionBonusLevels: 100,
+    completionMessage: "Partyt är samlat! Nu kan ni grinda er hela vägen till 1337!",
+  );
+
+  List<String> _gatheredFriends = [];
 
   // Countdown target: August 15, 2026, 09:00 AM
   final DateTime _targetDate = DateTime(2026, 8, 15, 9, 0);
@@ -477,6 +514,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // Default fallback bonus quests
   static final List<BonusQuestInfo> _defaultBonusQuests = [
+    _defaultGatherFriendsQuest,
     BonusQuestInfo(
       id: "bonus_1",
       title: "Bryt arm med en okänd",
@@ -690,9 +728,44 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         return;
       }
 
+      bool needsMigration = false;
+      final batch = FirebaseFirestore.instance.batch();
+      final existingIds = snapshot.docs.map((doc) => doc.id).toSet();
+
+      for (final dq in _defaultBonusQuests) {
+        if (!existingIds.contains(dq.id)) {
+          needsMigration = true;
+          batch.set(bonusRef.doc(dq.id), dq.toMap());
+        }
+      }
+
+      for (final doc in snapshot.docs) {
+        if (doc.id == _gatherFriendsQuestId) {
+          final data = _toMapStringDynamic(doc.data());
+          if (data['type'] != BonusQuestInfo.typeGatherFriends) {
+            needsMigration = true;
+            batch.set(doc.reference, {
+              'type': BonusQuestInfo.typeGatherFriends,
+              'completionBonusLevels': _parseInt(data['completionBonusLevels'] ?? data['completion_bonus_levels'], 100),
+            }, SetOptions(merge: true));
+          }
+        }
+      }
+
+      if (needsMigration) {
+        debugPrint("Updating/Seeding Firestore bonus quest documents...");
+        await batch.commit().catchError((e) {
+          debugPrint("Failed to update bonus quest documents: $e");
+        });
+      }
+
       final loadedBonus = snapshot.docs
           .map((doc) => BonusQuestInfo.fromFirestore(doc))
           .toList();
+
+      if (!loadedBonus.any((b) => b.isGatherFriends)) {
+        loadedBonus.insert(0, _defaultGatherFriendsQuest);
+      }
 
       if (mounted && loadedBonus.isNotEmpty) {
         setState(() {
@@ -816,6 +889,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           'completedSubQuests': prefs.getStringList('completed_subquests') ?? <String>[],
           'completedBonusQuests': prefs.getStringList('completed_bonus_quests') ?? <String>[],
           'usedPotionSecrets': prefs.getStringList('used_potion_secrets') ?? <String>[],
+          'gatheredFriends': prefs.getStringList('gathered_friends') ?? <String>[],
           'updatedAt': FieldValue.serverTimestamp(),
         };
         try {
@@ -844,6 +918,18 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     return raw.map((e) => e.toString()).toSet();
   }
 
+  List<String> _stringListFieldToOrderedList(dynamic raw) {
+    if (raw is! List) return [];
+    final seen = <String>{};
+    final ordered = <String>[];
+    for (final item in raw) {
+      final value = item.toString().trim().toLowerCase();
+      if (value.isEmpty || !seen.add(value)) continue;
+      ordered.add(value);
+    }
+    return ordered;
+  }
+
   AdventureState _resolveDisplayAdventureState(AdventureState remoteState, AdventureState currentLocal) {
     AdventureState effective = remoteState;
     if (remoteState == AdventureState.countdown && _localCountdownBypassed && !DateTime.now().isAfter(_targetDate)) {
@@ -869,6 +955,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final subs = _stringListFieldToSet(data['completedSubQuests'] ?? data['completed_subquests']);
     final bonus = _stringListFieldToSet(data['completedBonusQuests'] ?? data['completed_bonus_quests']);
     final potions = _stringListFieldToSet(data['usedPotionSecrets'] ?? data['used_potion_secrets']);
+    final gatheredFriends = _stringListFieldToOrderedList(data['gatheredFriends'] ?? data['gathered_friends']);
 
     AdventureState remoteState = AdventureState.values[adventureStateIndex.clamp(0, AdventureState.grinding.index)];
     if (remoteState == AdventureState.countdown && DateTime.now().isAfter(_targetDate)) {
@@ -887,6 +974,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _completedSubQuestKeys = subs;
       _completedBonusQuestKeys = bonus;
       _usedPotionSecretKeys = potions;
+      _gatheredFriends = gatheredFriends;
       if (_state != AdventureState.admin) {
         _state = _resolveDisplayAdventureState(remoteState, _state);
       }
@@ -908,6 +996,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           'completedSubQuests': _completedSubQuestKeys.toList(),
           'completedBonusQuests': _completedBonusQuestKeys.toList(),
           'usedPotionSecrets': _usedPotionSecretKeys.toList(),
+          'gatheredFriends': _gatheredFriends,
           'updatedAt': FieldValue.serverTimestamp(),
         };
     try {
@@ -1075,6 +1164,71 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         );
       },
     );
+  }
+
+  void _showPartyJoinDialog(String nickname, {VoidCallback? onClosed}) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E2125),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFD4AF37), width: 2),
+          ),
+          title: const Row(
+            children: [
+              Text("⚔️ ", style: TextStyle(fontSize: 22)),
+              Expanded(
+                child: Text(
+                  "Ny sällskapsmedlem",
+                  style: TextStyle(
+                    fontFamily: 'MedievalSharp',
+                    color: Color(0xFFE5C158),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF121417),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFD4AF37).withValues(alpha: 0.4)),
+            ),
+            child: Text(
+              "$nickname has joined your party!",
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Cinzel',
+                color: Colors.white,
+                fontSize: 18,
+                height: 1.4,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD4AF37),
+                foregroundColor: Colors.black,
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                "Skål! 🍺",
+                style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    ).then((_) {
+      if (onClosed != null) onClosed();
+    });
   }
 
   void _showCompletedQuestDetails(QuestInfo q) {
@@ -1674,7 +1828,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           builder: (context, setDialogState) {
             final activeBonusQuests = _bonusQuests.where((b) {
               return _completedQuestsCount >= b.unlockedByQuestOrder && !_completedBonusQuestKeys.contains(b.id);
-            }).toList();
+            }).toList()
+              ..sort((a, b) {
+                if (a.isGatherFriends && !b.isGatherFriends) return -1;
+                if (!a.isGatherFriends && b.isGatherFriends) return 1;
+                return 0;
+              });
 
             return AlertDialog(
               backgroundColor: const Color(0xFF1E2125),
@@ -1749,6 +1908,13 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         ),
                         const SizedBox(height: 12),
                         ...activeBonusQuests.map((bonus) {
+                          if (bonus.isGatherFriends) {
+                            return _buildGatherFriendsBonusCard(
+                              bonus,
+                              setDialogState,
+                              (err) => dialogError = err,
+                            );
+                          }
                           final controller = _getBonusQuestController(bonus.id);
                           return Container(
                             margin: const EdgeInsets.only(bottom: 14),
@@ -1862,8 +2028,324 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
+  AdminUserInfo? _findAdminByUsername(String username) {
+    final clean = username.trim().toLowerCase();
+    if (clean.isEmpty) return null;
+    for (final admin in _adminUsers) {
+      if (admin.username.trim().toLowerCase() == clean) return admin;
+    }
+    return null;
+  }
+
+  bool _isFriendGathered(String username) {
+    final clean = username.trim().toLowerCase();
+    return _gatheredFriends.any((name) => name.trim().toLowerCase() == clean);
+  }
+
+  bool _isExcludedFromParty(String username) {
+    return username.trim().toLowerCase() == _excludedPartyUsername;
+  }
+
+  List<AdminUserInfo> _getPartyMembers() {
+    final members = <AdminUserInfo>[];
+    for (final name in _gatheredFriends) {
+      if (_isExcludedFromParty(name)) continue;
+      final admin = _findAdminByUsername(name);
+      if (admin != null) {
+        members.add(admin);
+      } else {
+        members.add(AdminUserInfo(
+          id: name.replaceAll(' ', '_'),
+          username: name,
+        ));
+      }
+    }
+    return members;
+  }
+
+  Widget _buildGatherFriendsBonusCard(
+    BonusQuestInfo bonus,
+    StateSetter setDialogState,
+    Function(String) setDialogError,
+  ) {
+    final controller = _getBonusQuestController(bonus.id);
+    final gatheredCount = _gatheredFriends.length;
+    final progress = (gatheredCount / _gatherFriendsTargetCount).clamp(0.0, 1.0);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF262C34),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE5C158), width: 1.4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  bonus.title,
+                  style: const TextStyle(
+                    fontFamily: 'MedievalSharp',
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFE5C158),
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                  border: Border.all(color: const Color(0xFFFFD700), width: 1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  "+${bonus.rewardLevels} Lvl / vän",
+                  style: const TextStyle(
+                    color: Color(0xFFFFD700),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (bonus.description.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              bonus.description,
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ],
+          const SizedBox(height: 6),
+          Text(
+            "+${bonus.completionBonusLevels} extra levlar när alla $_gatherFriendsTargetCount vänner är samlade!",
+            style: const TextStyle(color: Color(0xFF81C784), fontSize: 11, fontFamily: 'MedievalSharp'),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "$gatheredCount / $_gatherFriendsTargetCount vänner samlade",
+                style: const TextStyle(
+                  color: Color(0xFFE5C158),
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'MedievalSharp',
+                ),
+              ),
+              Text(
+                "${(progress * 100).round()}%",
+                style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'MedievalSharp'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: Colors.black54,
+              color: const Color(0xFFE5C158),
+            ),
+          ),
+          if (_gatheredFriends.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _gatheredFriends.map((name) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1B3A27).withValues(alpha: 0.8),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF4CAF50), width: 0.8),
+                  ),
+                  child: Text(
+                    "⚔️ $name",
+                    style: const TextStyle(
+                      color: Color(0xFF81C784),
+                      fontSize: 10,
+                      fontFamily: 'MedievalSharp',
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    border: Border.all(color: const Color(0xFF8B7355), width: 1.0),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: TextField(
+                    controller: controller,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                    decoration: const InputDecoration(
+                      hintText: "Ange vännens namn...",
+                      hintStyle: TextStyle(color: Colors.grey, fontSize: 11),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _addFriendToParty(bonus, controller.text, setDialogState, setDialogError),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE5C158),
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+                onPressed: () => _addFriendToParty(bonus, controller.text, setDialogState, setDialogError),
+                child: const Text(
+                  "Anslut",
+                  style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold, fontSize: 11),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addFriendToParty(
+    BonusQuestInfo bonus,
+    String rawInput,
+    StateSetter setDialogState,
+    Function(String) setDialogError,
+  ) {
+    if (!_canDriveAragnozProgress()) return;
+
+    final cleanInput = rawInput.trim().toLowerCase();
+    if (cleanInput.isEmpty) {
+      setDialogState(() {
+        setDialogError("Ange vännens namn, krigare!");
+      });
+      return;
+    }
+
+    if (_isExcludedFromParty(cleanInput)) {
+      setDialogState(() {
+        setDialogError("Burqen rider en annan väg och ansluter ej till partyt.");
+      });
+      return;
+    }
+
+    final admin = _findAdminByUsername(cleanInput);
+    if (admin == null) {
+      setDialogState(() {
+        setDialogError("Okänt namn! Endast betrodda vänner kan ansluta till partyt.");
+      });
+      return;
+    }
+
+    if (_isFriendGathered(admin.username)) {
+      setDialogState(() {
+        setDialogError("${admin.username} är redan i partyt!");
+      });
+      return;
+    }
+
+    if (_gatheredFriends.length >= _gatherFriendsTargetCount) {
+      setDialogState(() {
+        setDialogError("Partyt är redan fullt!");
+      });
+      return;
+    }
+
+    final perFriendReward = bonus.rewardLevels > 0 ? bonus.rewardLevels : 10;
+    final willComplete = _gatheredFriends.length + 1 >= _gatherFriendsTargetCount;
+    final completionBonus = willComplete ? bonus.completionBonusLevels : 0;
+    final reward = perFriendReward + completionBonus;
+    final oldLevel = _level;
+    final newLevel = _level + reward;
+    final canonicalName = admin.username.trim().toLowerCase();
+
+    setState(() {
+      _gatheredFriends.add(canonicalName);
+      _level = newLevel;
+      if (willComplete) {
+        _completedBonusQuestKeys.add(bonus.id);
+      }
+    });
+    _writeGameStateToFirestore();
+
+    if (admin.customStatus.trim().toUpperCase() == 'AFK') {
+      final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
+      unawaited(FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
+        'customStatus': '',
+      }, SetOptions(merge: true)));
+    }
+
+    try {
+      FirebaseFirestore.instance.collection('quest_logs').add({
+        'timestamp': FieldValue.serverTimestamp(),
+        'quest_title': willComplete
+            ? 'Bonus Quest: ${bonus.title} — ${admin.username} anslöt (+$perFriendReward) och partyt är komplett (+$completionBonus)'
+            : 'Bonus Quest: ${bonus.title} — ${admin.username} anslöt (+$perFriendReward levels)',
+        'old_level': oldLevel,
+        'new_level': newLevel,
+        'friend_added': canonicalName,
+      });
+    } catch (e) {
+      debugPrint("Failed to write gather-friends log to Firestore: $e");
+    }
+
+    _getBonusQuestController(bonus.id).clear();
+    _checkLevelMilestoneVideos(oldLevel, newLevel);
+
+    if (oldLevel < _targetLevel && newLevel >= _targetLevel) {
+      AudioController.instance.playVictorySound();
+    } else {
+      _triggerQuestCompletionEffects(questTitle: bonus.title);
+    }
+
+    setDialogState(() {
+      setDialogError("");
+    });
+
+    final displayName = rawInput.trim().isNotEmpty ? rawInput.trim() : admin.username;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showPartyJoinDialog(
+        displayName,
+        onClosed: willComplete && bonus.completionMessage.trim().isNotEmpty
+            ? () {
+                if (mounted) {
+                  _showQuestCompletionMessageDialog(bonus.completionMessage.trim(), bonus.title);
+                }
+              }
+            : null,
+      );
+    });
+  }
+
   void _completeBonusQuest(BonusQuestInfo bonus, String rawInput, StateSetter setDialogState, Function(String) setDialogError) {
     if (!_canDriveAragnozProgress()) return;
+
+    if (bonus.isGatherFriends) {
+      _addFriendToParty(bonus, rawInput, setDialogState, setDialogError);
+      return;
+    }
 
     if (bonus.checkPassword(rawInput)) {
       final reward = bonus.rewardLevels;
@@ -1894,7 +2376,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       if (oldLevel < _targetLevel && newLevel >= _targetLevel) {
         AudioController.instance.playVictorySound();
       } else {
-        _triggerQuestCompletionEffects(questTitle: bonus.title);
+        _triggerQuestCompletionEffects(
+          questTitle: bonus.title,
+          completionMessage: bonus.completionMessage,
+        );
       }
 
       setDialogState(() {
@@ -1930,6 +2415,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _completedSubQuestKeys.clear();
       _completedBonusQuestKeys.clear();
       _usedPotionSecretKeys.clear();
+      _gatheredFriends.clear();
       _shownLevelVideos.clear();
       _usernameController.clear();
       _classController.clear();
@@ -1952,6 +2438,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       'completedSubQuests': <String>[],
       'completedBonusQuests': <String>[],
       'usedPotionSecrets': <String>[],
+      'gatheredFriends': <String>[],
       'updatedAt': FieldValue.serverTimestamp(),
     });
     _setLocalCountdownBypassed(false);
@@ -4068,6 +4555,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final passwordController = TextEditingController(text: existingBonus?.password ?? '');
     final rewardController = TextEditingController(text: (existingBonus?.rewardLevels ?? 50).toString());
     final unlockedByOrderController = TextEditingController(text: (existingBonus?.unlockedByQuestOrder ?? 1).toString());
+    final completionBonusController = TextEditingController(text: (existingBonus?.completionBonusLevels ?? 100).toString());
+    final completionMessageController = TextEditingController(text: existingBonus?.completionMessage ?? '');
+    final isGatherFriends = existingBonus?.isGatherFriends == true;
 
     showDialog(
       context: context,
@@ -4091,15 +4581,29 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                 const SizedBox(height: 10),
                 _adminTextField("Beskrivning", descController, maxLines: 2),
                 const SizedBox(height: 10),
-                _adminTextField("Lösenord", passwordController),
-                const SizedBox(height: 10),
+                if (!isGatherFriends) ...[
+                  _adminTextField("Lösenord", passwordController),
+                  const SizedBox(height: 10),
+                ],
                 Row(
                   children: [
-                    Expanded(child: _adminTextField("Belöning (levlar)", rewardController, isNumber: true)),
+                    Expanded(
+                      child: _adminTextField(
+                        isGatherFriends ? "Levlar per vän" : "Belöning (levlar)",
+                        rewardController,
+                        isNumber: true,
+                      ),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(child: _adminTextField("Låses upp efter Uppdrag #", unlockedByOrderController, isNumber: true)),
                   ],
                 ),
+                if (isGatherFriends) ...[
+                  const SizedBox(height: 10),
+                  _adminTextField("Extra levlar när partyt är fullt", completionBonusController, isNumber: true),
+                ],
+                const SizedBox(height: 10),
+                _adminTextField("Meddelande vid klarat uppdrag (valfritt)", completionMessageController, maxLines: 2),
               ],
             ),
           ),
@@ -4119,8 +4623,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
                 final desc = descController.text.trim();
                 final password = passwordController.text.trim();
-                final reward = int.tryParse(rewardController.text.trim()) ?? 50;
+                final reward = int.tryParse(rewardController.text.trim()) ?? (isGatherFriends ? 10 : 50);
                 final unlockedByOrder = int.tryParse(unlockedByOrderController.text.trim()) ?? 1;
+                final completionBonus = int.tryParse(completionBonusController.text.trim()) ?? 100;
+                final completionMsg = completionMessageController.text.trim();
 
                 final docId = isEditing ? existingBonus.id : "bonus_${DateTime.now().millisecondsSinceEpoch}";
                 final docRef = FirebaseFirestore.instance.collection('bonus_quests').doc(docId);
@@ -4128,9 +4634,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                 await docRef.set({
                   'title': title,
                   'description': desc,
-                  'password': password,
+                  'password': isGatherFriends ? '' : password,
                   'rewardLevels': reward,
                   'unlockedByQuestOrder': unlockedByOrder,
+                  'type': isGatherFriends ? BonusQuestInfo.typeGatherFriends : BonusQuestInfo.typePassword,
+                  'completionBonusLevels': isGatherFriends ? completionBonus : 0,
+                  'completionMessage': completionMsg,
                 }, SetOptions(merge: true));
 
                 if (context.mounted) {
@@ -4152,6 +4661,15 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _confirmDeleteBonusQuest(BonusQuestInfo bonus) {
+    if (bonus.isGatherFriends) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFFC62828),
+          content: Text("Specialuppdraget 'Gather your friends!' kan inte tas bort."),
+        ),
+      );
+      return;
+    }
     showDialog(
       context: context,
       builder: (context) {
@@ -4376,14 +4894,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   bool _isPartyMemberActive(AdminUserInfo admin) {
-    final status = admin.customStatus.trim();
-    if (status.toUpperCase() == 'AFK') {
-      return false;
-    }
-    if (status.isNotEmpty) {
-      return true;
-    }
-    return _completedQuestsCount >= admin.unlockedByQuestOrder;
+    return admin.customStatus.trim().toUpperCase() != 'AFK';
   }
 
   String _getPartyMemberStatusLabel(AdminUserInfo admin) {
@@ -4394,8 +4905,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     if (status.isNotEmpty && status.toUpperCase() != 'ACTIVE') {
       return status;
     }
-    final active = _isPartyMemberActive(admin);
-    return active ? "ACTIVE" : "AFK";
+    return "ACTIVE";
   }
 
   void _showCustomStatusDialog(AdminUserInfo admin) {
@@ -4438,7 +4948,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                "Skriv in valfri statustext (t.ex. 'TANK', 'HEALER', 'ÖLHÄVARE'). Den visas i Aragnoz party-vy och behandlas som ACTIVE.",
+                "Skriv in valfri statustext (t.ex. 'TANK', 'HEALER', 'ÖLHÄVARE'). Den visas i Aragnoz party när personen anslutit, och behandlas som ACTIVE.",
                 style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'MedievalSharp'),
               ),
               const SizedBox(height: 12),
@@ -4491,8 +5001,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   Widget _buildPartySection() {
+    final partyMembers = _getPartyMembers();
     int activeCount = 0;
-    for (final a in _adminUsers) {
+    for (final a in partyMembers) {
       if (_isPartyMemberActive(a)) {
         activeCount++;
       }
@@ -4545,7 +5056,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         ),
                       ),
                       Text(
-                        "Gruppmedlemmar (${_adminUsers.length} st)",
+                        partyMembers.isEmpty
+                            ? "Partyt är tomt"
+                            : "Gruppmedlemmar (${partyMembers.length} / $_gatherFriendsTargetCount)",
                         style: const TextStyle(fontSize: 11, color: Colors.grey, fontFamily: 'MedievalSharp'),
                       ),
                     ],
@@ -4573,7 +5086,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      "$activeCount / ${_adminUsers.length} AKTIVA",
+                      partyMembers.isEmpty
+                          ? "0 / $_gatherFriendsTargetCount AKTIVA"
+                          : "$activeCount / ${partyMembers.length} AKTIVA",
                       style: TextStyle(
                         fontFamily: 'MedievalSharp',
                         fontSize: 10,
@@ -4587,72 +5102,104 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             ],
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _adminUsers.map((admin) {
-              final bool isActive = _isPartyMemberActive(admin);
-              final String statusLabel = _getPartyMemberStatusLabel(admin);
-              final bool isSuper = admin.username.toLowerCase() == 'hetelmers hot';
-
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? const Color(0xFF1B3A27).withValues(alpha: 0.7)
-                      : Colors.black.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isActive
-                        ? const Color(0xFF4CAF50)
-                        : (isSuper ? const Color(0xFFFFD700).withValues(alpha: 0.4) : const Color(0xFF8B7355).withValues(alpha: 0.4)),
-                    width: isActive ? 1.2 : 0.8,
+          if (partyMembers.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF8B7355).withValues(alpha: 0.4)),
+              ),
+              child: const Column(
+                children: [
+                  Text("⚔️", style: TextStyle(fontSize: 22)),
+                  SizedBox(height: 6),
+                  Text(
+                    "Inga sällskapsmedlemmar ännu",
+                    style: TextStyle(
+                      fontFamily: 'MedievalSharp',
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFE5C158),
+                    ),
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      isActive ? "⚔️" : "💤",
-                      style: const TextStyle(fontSize: 14),
+                  SizedBox(height: 4),
+                  Text(
+                    "Samla dina vänner via bonusuppdraget Gather your friends!",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11, color: Colors.white70, fontFamily: 'MedievalSharp'),
+                  ),
+                ],
+              ),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: partyMembers.map((admin) {
+                final bool isActive = _isPartyMemberActive(admin);
+                final String statusLabel = _getPartyMemberStatusLabel(admin);
+                final bool isSuper = admin.username.toLowerCase() == 'hetelmers hot';
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? const Color(0xFF1B3A27).withValues(alpha: 0.7)
+                        : Colors.black.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isActive
+                          ? const Color(0xFF4CAF50)
+                          : (isSuper ? const Color(0xFFFFD700).withValues(alpha: 0.4) : const Color(0xFF8B7355).withValues(alpha: 0.4)),
+                      width: isActive ? 1.2 : 0.8,
                     ),
-                    const SizedBox(width: 6),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              admin.username,
-                              style: TextStyle(
-                                fontFamily: 'MedievalSharp',
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: isActive ? Colors.white : Colors.white60,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        isActive ? "⚔️" : "💤",
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(width: 6),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                admin.username,
+                                style: TextStyle(
+                                  fontFamily: 'MedievalSharp',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: isActive ? Colors.white : Colors.white60,
+                                ),
                               ),
-                            ),
-                            if (isSuper) ...[
-                              const SizedBox(width: 4),
-                              const Text("👑", style: TextStyle(fontSize: 10)),
+                              if (isSuper) ...[
+                                const SizedBox(width: 4),
+                                const Text("👑", style: TextStyle(fontSize: 10)),
+                              ],
                             ],
-                          ],
-                        ),
-                        Text(
-                          statusLabel,
-                          style: TextStyle(
-                            fontFamily: 'MedievalSharp',
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: isActive ? const Color(0xFF81C784) : const Color(0xFFE57373),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
+                          Text(
+                            statusLabel,
+                            style: TextStyle(
+                              fontFamily: 'MedievalSharp',
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: isActive ? const Color(0xFF81C784) : const Color(0xFFE57373),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
         ],
       ),
     );
@@ -4697,22 +5244,31 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
               final isSuper = (admin.username.toLowerCase() == 'hetelmers hot');
               final isSelf = _currentUsername.isNotEmpty && (admin.username.toLowerCase().trim() == _currentUsername.toLowerCase().trim());
               final canEditThisAdmin = _isSuperAdmin || isSelf;
-              final currentUnlockOrder = admin.unlockedByQuestOrder;
               final currentStatus = admin.customStatus.trim();
+              final isInParty = _isFriendGathered(admin.username);
+              final isExcluded = _isExcludedFromParty(admin.username);
 
               String statusBadgeText;
               Color statusBadgeColor;
-              if (currentStatus.toUpperCase() == 'AFK') {
-                statusBadgeText = "💤 Manuell AFK";
+              if (isExcluded) {
+                statusBadgeText = "Deltar ej i partyt";
+                statusBadgeColor = Colors.white54;
+              } else if (currentStatus.toUpperCase() == 'AFK') {
+                statusBadgeText = isInParty ? "💤 AFK" : "💤 AFK (ej i party ännu)";
                 statusBadgeColor = const Color(0xFFE57373);
               } else if (currentStatus.toUpperCase() == 'ACTIVE') {
-                statusBadgeText = "⚔️ Manuell ACTIVE";
+                statusBadgeText = isInParty ? "⚔️ ACTIVE" : "⚔️ ACTIVE (ej i party ännu)";
                 statusBadgeColor = const Color(0xFF81C784);
               } else if (currentStatus.isNotEmpty) {
-                statusBadgeText = "⚔️ \"$currentStatus\" (Anpassad - Aktiv)";
+                statusBadgeText = isInParty
+                    ? "⚔️ \"$currentStatus\""
+                    : "⚔️ \"$currentStatus\" (ej i party ännu)";
                 statusBadgeColor = const Color(0xFFFFD700);
+              } else if (isInParty) {
+                statusBadgeText = "⚔️ ACTIVE";
+                statusBadgeColor = const Color(0xFF81C784);
               } else {
-                statusBadgeText = "⚙️ Automatisk (Efter Uppdrag #$currentUnlockOrder)";
+                statusBadgeText = "Ej i Aragnoz party ännu";
                 statusBadgeColor = Colors.white70;
               }
 
@@ -4869,8 +5425,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                     }, SetOptions(merge: true));
                                   }
                                 : null,
-                            icon: const Icon(Icons.autorenew, size: 12, color: Colors.black),
-                            label: const Text("Auto (Uppdrag)", style: TextStyle(fontSize: 10, fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold)),
+                            icon: const Icon(Icons.restart_alt, size: 12, color: Colors.black),
+                            label: const Text("Rensa status", style: TextStyle(fontSize: 10, fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold)),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF90CAF9),
                               foregroundColor: Colors.black,
@@ -4892,55 +5448,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Auto unlock quest order dropdown
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black45,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFF8B7355).withValues(alpha: 0.5)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              "Auto-aktiv efter Uppdrag #:",
-                              style: TextStyle(fontSize: 11, color: Colors.white70, fontFamily: 'MedievalSharp'),
-                            ),
-                            DropdownButton<int>(
-                              value: [0, 1, 2, 3, 4, 5, 6, 7, 8, 999].contains(currentUnlockOrder) ? currentUnlockOrder : 999,
-                              dropdownColor: const Color(0xFF1E2125),
-                              isDense: true,
-                              style: const TextStyle(fontSize: 11, color: Color(0xFFFFD700), fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold),
-                              underline: const SizedBox(),
-                              items: const [
-                                DropdownMenuItem(value: 999, child: Text("💤 Alltid AFK")),
-                                DropdownMenuItem(value: 0, child: Text("⚔️ Aktiv från start")),
-                                DropdownMenuItem(value: 1, child: Text("⚔️ Efter Uppdrag 1")),
-                                DropdownMenuItem(value: 2, child: Text("⚔️ Efter Uppdrag 2")),
-                                DropdownMenuItem(value: 3, child: Text("⚔️ Efter Uppdrag 3")),
-                                DropdownMenuItem(value: 4, child: Text("⚔️ Efter Uppdrag 4")),
-                                DropdownMenuItem(value: 5, child: Text("⚔️ Efter Uppdrag 5")),
-                                DropdownMenuItem(value: 6, child: Text("⚔️ Efter Uppdrag 6")),
-                                DropdownMenuItem(value: 7, child: Text("⚔️ Efter Uppdrag 7")),
-                                DropdownMenuItem(value: 8, child: Text("⚔️ Efter Uppdrag 8")),
-                              ],
-                              onChanged: canEditThisAdmin
-                                  ? (newVal) async {
-                                      if (newVal != null) {
-                                        final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
-                                        await FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
-                                          'unlockedByQuestOrder': newVal,
-                                        }, SetOptions(merge: true));
-                                      }
-                                    }
-                                  : null,
-                            ),
-                          ],
-                        ),
                       ),
                       if (!canEditThisAdmin) ...[
                         const SizedBox(height: 6),
@@ -4975,7 +5482,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
     int totalBonusQuestLevels = 0;
     for (final b in _bonusQuests) {
-      totalBonusQuestLevels += b.rewardLevels;
+      if (b.isGatherFriends) {
+        totalBonusQuestLevels += b.rewardLevels * _gatherFriendsTargetCount + b.completionBonusLevels;
+      } else {
+        totalBonusQuestLevels += b.rewardLevels;
+      }
     }
 
     final int maxAchievableLevel = 50 + totalQuestLevels + totalPotionLevels + totalBonusQuestLevels;
@@ -5507,18 +6018,31 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                               spacing: 12,
                                               runSpacing: 4,
                                               children: [
+                                                if (bonus.isGatherFriends)
+                                                  const Text(
+                                                    "Typ: Samla vänner",
+                                                    style: TextStyle(color: Color(0xFFFFD700), fontSize: 11),
+                                                  )
+                                                else
+                                                  Text(
+                                                    "Lösenord: '${bonus.password}'",
+                                                    style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11),
+                                                  ),
                                                 Text(
-                                                  "Lösenord: '${bonus.password}'",
-                                                  style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11),
-                                                ),
-                                                Text(
-                                                  "Belöning: +${bonus.rewardLevels} levlar",
+                                                  bonus.isGatherFriends
+                                                      ? "Belöning: +${bonus.rewardLevels} per vän, +${bonus.completionBonusLevels} när partyt är fullt"
+                                                      : "Belöning: +${bonus.rewardLevels} levlar",
                                                   style: const TextStyle(color: Colors.grey, fontSize: 11),
                                                 ),
                                                 Text(
                                                   "Låses upp efter Uppdrag #${bonus.unlockedByQuestOrder}",
                                                   style: const TextStyle(color: Color(0xFF81D4FA), fontSize: 11),
                                                 ),
+                                                if (bonus.completionMessage.isNotEmpty)
+                                                  Text(
+                                                    "📜 Meddelande: ${bonus.completionMessage}",
+                                                    style: const TextStyle(color: Color(0xFFFFD700), fontSize: 11),
+                                                  ),
                                               ],
                                             ),
                                           ],
@@ -5534,15 +6058,16 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                         ),
                                       ),
                                       const SizedBox(width: 8),
-                                      ElevatedButton.icon(
-                                        onPressed: () => _confirmDeleteBonusQuest(bonus),
-                                        icon: const Icon(Icons.delete, size: 16, color: Colors.white),
-                                        label: const Text("Ta bort", style: TextStyle(color: Colors.white, fontSize: 11)),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFFD32F2F),
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                      if (!bonus.isGatherFriends)
+                                        ElevatedButton.icon(
+                                          onPressed: () => _confirmDeleteBonusQuest(bonus),
+                                          icon: const Icon(Icons.delete, size: 16, color: Colors.white),
+                                          label: const Text("Ta bort", style: TextStyle(color: Colors.white, fontSize: 11)),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFFD32F2F),
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                          ),
                                         ),
-                                      ),
                                     ],
                                   ),
                                 ),
