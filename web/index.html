@@ -57,20 +57,35 @@
         var self = this;
         var handler = function() {
           if (!self.wantsThemeMusic || self.isMuted) return;
+          if (!self.needsUserGesture || self.isMusicActuallyPlaying()) return;
           self.ensureCtx();
-          if (self.needsUserGesture || !self.isMusicPlaying) {
-            self.startMusic();
-          }
+          self.startMusic();
         };
-        ['pointerdown', 'touchstart', 'keydown', 'click'].forEach(function(evt) {
+        ['pointerdown', 'touchstart', 'keydown'].forEach(function(evt) {
           document.addEventListener(evt, handler, { passive: true });
         });
       },
 
+      isMusicActuallyPlaying: function() {
+        if (this.customMusic && !this.customMusic.paused && !this.customMusic.ended) {
+          return true;
+        }
+        if (this.musicTimer) {
+          return true;
+        }
+        return false;
+      },
+
       requestThemeMusic: function() {
         this.wantsThemeMusic = true;
+        this.isMuted = false;
         this.installUnlockListener();
-        this.toggleMute(false);
+        if (this.isMusicActuallyPlaying()) {
+          this.markMusicPlaying();
+          return;
+        }
+        this.ensureCtx();
+        this.startMusic();
       },
 
       markMusicPlaying: function() {
@@ -104,7 +119,7 @@
         this.ensureCtx();
         if (this.isMuted) {
           this.stopMusic();
-        } else {
+        } else if (!this.isMusicActuallyPlaying()) {
           this.startMusic();
         }
       },

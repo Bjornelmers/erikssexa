@@ -2766,10 +2766,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
     String pad(int n) => n.toString().padLeft(2, '0');
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _requestThemeMusicOnUserGesture,
-      child: Scaffold(
+    return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
@@ -2822,7 +2819,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           ),
         ],
       ),
-    ),
     );
   }
 
@@ -2861,10 +2857,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // 2. LOGIN / VALIDATION VIEW
   Widget _buildLoginScreen() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _requestThemeMusicOnUserGesture,
-      child: Scaffold(
+    return Scaffold(
       backgroundColor: const Color(0xFF07080A),
       body: Stack(
         children: [
@@ -3046,7 +3039,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           ),
         ],
       ),
-    ),
     );
   }
 
