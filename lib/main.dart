@@ -1150,6 +1150,37 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     return effective.index >= currentLocal.index ? effective : currentLocal;
   }
 
+  AdventureState _adventureStateForThisDevice(AdventureState resolved) {
+    if (_currentUsername.isEmpty && resolved.index > AdventureState.login.index) {
+      return AdventureState.login;
+    }
+    return resolved;
+  }
+
+  String get _displayUsername {
+    if (_currentUsername.isEmpty) return "";
+    if (_currentUsername == 'aragnoz') return 'Aragnoz';
+    return _currentUsername;
+  }
+
+  Future<void> _logout() async {
+    await _saveAdminState(false, isSuperAdmin: false, currentUsername: "");
+    if (!mounted) return;
+    setState(() {
+      _currentUsername = "";
+      _isAdmin = false;
+      _isSuperAdmin = false;
+      _superAdminTestMode = true;
+      _loginError = "";
+      _usernameController.clear();
+      _classController.clear();
+      _raceController.clear();
+      if (_state != AdventureState.countdown) {
+        _state = AdventureState.login;
+      }
+    });
+  }
+
   Future<void> _setLocalCountdownBypassed(bool value) async {
     _localCountdownBypassed = value;
     final prefs = await SharedPreferences.getInstance();
@@ -1191,7 +1222,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _usedPotionSecretKeys = potions;
       _gatheredFriends = gatheredFriends;
       if (_state != AdventureState.admin) {
-        _state = _resolveDisplayAdventureState(remoteState, _state);
+        _state = _adventureStateForThisDevice(_resolveDisplayAdventureState(remoteState, _state));
       }
       _isLoading = false;
     });
@@ -3138,6 +3169,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           ),
           Positioned(
             top: 10,
+            left: 10,
+            child: SafeArea(child: _buildLoggedInBanner()),
+          ),
+          Positioned(
+            top: 10,
             right: 10,
             child: SafeArea(child: _buildAudioButton()),
           ),
@@ -3757,18 +3793,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                                   ),
                                 ],
                               ),
-                            ] else ...[
-                              const Padding(
-                                padding: EdgeInsets.only(top: 8),
-                                child: Text(
-                                  "Endast superadmin kan klara uppdrag åt Aragnoz.",
-                                  style: TextStyle(
-                                    fontFamily: 'MedievalSharp',
-                                    fontSize: 12,
-                                    color: Colors.white54,
-                                  ),
-                                ),
-                              ),
                             ],
                             
                             // Error text
@@ -4316,10 +4340,65 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           ],
           Positioned(
             top: 10,
+            left: 10,
+            child: SafeArea(child: _buildLoggedInBanner()),
+          ),
+          Positioned(
+            top: 10,
             right: 10,
             child: SafeArea(child: _buildAudioButton()),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLoggedInBanner() {
+    if (_currentUsername.isEmpty) return const SizedBox.shrink();
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.72),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.person, size: 14, color: Color(0xFFE5C158)),
+            const SizedBox(width: 6),
+            Text(
+              "Inloggad som $_displayUsername",
+              style: const TextStyle(
+                fontFamily: 'MedievalSharp',
+                fontSize: 11,
+                color: Color(0xFFE5C158),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: _logout,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                "Logga ut",
+                style: TextStyle(
+                  fontFamily: 'MedievalSharp',
+                  fontSize: 10,
+                  color: Color(0xFFFF8A80),
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -5778,6 +5857,13 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         body: SafeArea(
           child: Column(
             children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _buildLoggedInBanner(),
+                ),
+              ),
               // Max Level Summary Card at top of Admin View
               Container(
                 margin: const EdgeInsets.fromLTRB(8, 6, 8, 4),
