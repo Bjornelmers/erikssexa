@@ -46,6 +46,46 @@
       musicTimer: null,
       isMuted: true,
       customMusic: null,
+      wantsThemeMusic: false,
+      needsUserGesture: false,
+      isMusicPlaying: false,
+      unlockInstalled: false,
+
+      installUnlockListener: function() {
+        if (this.unlockInstalled) return;
+        this.unlockInstalled = true;
+        var self = this;
+        var handler = function() {
+          if (!self.wantsThemeMusic || self.isMuted) return;
+          self.ensureCtx();
+          if (self.needsUserGesture || !self.isMusicPlaying) {
+            self.startMusic();
+          }
+        };
+        ['pointerdown', 'touchstart', 'keydown', 'click'].forEach(function(evt) {
+          document.addEventListener(evt, handler, { passive: true });
+        });
+      },
+
+      requestThemeMusic: function() {
+        this.wantsThemeMusic = true;
+        this.installUnlockListener();
+        this.toggleMute(false);
+      },
+
+      markMusicPlaying: function() {
+        this.isMusicPlaying = true;
+        this.needsUserGesture = false;
+      },
+
+      markAutoplayBlocked: function() {
+        this.isMusicPlaying = false;
+        this.needsUserGesture = true;
+      },
+
+      markMusicStopped: function() {
+        this.isMusicPlaying = false;
+      },
 
       ensureCtx: function() {
         if (!this.audioCtx) {
@@ -58,6 +98,9 @@
 
       toggleMute: function(muteState) {
         this.isMuted = muteState;
+        if (!muteState) {
+          this.wantsThemeMusic = true;
+        }
         this.ensureCtx();
         if (this.isMuted) {
           this.stopMusic();
@@ -93,11 +136,12 @@
           
           fallbackAud.play().then(function() {
             self.customMusic = fallbackAud;
+            self.markMusicPlaying();
             console.log("Playing custom ambient music loop from fallback path!");
           }).catch(function(err) {
-            console.log("Autoplay blocked or load failed for fallback path. Starting synthesizer.");
+            console.log("Autoplay blocked on fallback path. Waiting for user gesture.");
             self.customMusic = null;
-            self.startSynthMusic();
+            self.markAutoplayBlocked();
           });
         }
         
@@ -107,14 +151,15 @@
         
         aud.play().then(function() {
           self.customMusic = aud;
+          self.markMusicPlaying();
           console.log("Playing custom ambient music loop from primary path!");
         }).catch(function(err) {
           if (aud.error) {
             tryFallback();
           } else {
-            console.log("Autoplay custom music blocked/failed. Starting synthesizer.");
+            console.log("Autoplay blocked on primary path. Waiting for user gesture.");
             self.customMusic = null;
-            self.startSynthMusic();
+            self.markAutoplayBlocked();
           }
         });
       },
@@ -125,6 +170,7 @@
           this.customMusic = null;
         }
         this.stopSynthMusic();
+        this.markMusicStopped();
       },
 
       playLevelUp: function() {
@@ -359,6 +405,7 @@
 
         runLoop();
         this.musicTimer = setInterval(runLoop, 4000);
+        this.markMusicPlaying();
       },
 
       stopSynthMusic: function() {
@@ -372,6 +419,7 @@
         this.musicOscs = [];
       }
     };
+    window.daocAudio.installUnlockListener();
   </script>
 </head>
 <body>

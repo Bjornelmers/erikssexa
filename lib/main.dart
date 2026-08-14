@@ -1261,10 +1261,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   void _syncThemeMusicForState(AdventureState previousState) {
     if (_state == AdventureState.countdown || _state == AdventureState.login) {
-      if (previousState != _state || !_audioInitialized) {
-        _audioInitialized = true;
-        AudioController.instance.playThemeMusic();
-      }
+      AudioController.instance.requestThemeMusic();
       return;
     }
 
@@ -1273,6 +1270,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _audioInitialized = true;
       _startMusic();
     }
+  }
+
+  void _requestThemeMusicOnUserGesture() {
+    AudioController.instance.requestThemeMusic();
   }
 
   Future<void> _saveAdminState(bool isAdmin, {bool isSuperAdmin = false, String currentUsername = ""}) async {
@@ -1683,6 +1684,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // Countdown bypass: local only — does not change Firestore for other devices
   void _handleBypassClick() {
+    _requestThemeMusicOnUserGesture();
     if (_state != AdventureState.countdown || !_hasLoggedInBefore) return;
     final newClicks = _bypassClicks + 1;
     final previousState = _state;
@@ -2764,7 +2766,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
     String pad(int n) => n.toString().padLeft(2, '0');
 
-    return Scaffold(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _requestThemeMusicOnUserGesture,
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
@@ -2817,6 +2822,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -2855,7 +2861,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // 2. LOGIN / VALIDATION VIEW
   Widget _buildLoginScreen() {
-    return Scaffold(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _requestThemeMusicOnUserGesture,
+      child: Scaffold(
       backgroundColor: const Color(0xFF07080A),
       body: Stack(
         children: [
@@ -2981,8 +2990,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           // Golden sword-hilt styled action button
                           ElevatedButton(
                             onPressed: () {
-                              AudioController.instance.playThemeMusic();
-                              _audioInitialized = true;
+                              _requestThemeMusicOnUserGesture();
                               _verifyLogin();
                             },
                             style: ElevatedButton.styleFrom(
@@ -3038,6 +3046,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           ),
         ],
       ),
+    ),
     );
   }
 

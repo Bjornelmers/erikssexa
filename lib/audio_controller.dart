@@ -9,7 +9,11 @@ class AudioController {
   bool get isMuted => _isMuted;
 
   void init() {
-    // Initialized on index.html script load
+    try {
+      js.context.callMethod('eval', ['window.daocAudio.installUnlockListener();']);
+    } catch (e) {
+      print("Error installing audio unlock listener in JS: $e");
+    }
   }
 
   void toggleMute() {
@@ -21,14 +25,17 @@ class AudioController {
     }
   }
 
-  void playThemeMusic() {
-    // Play theme music through toggleMute
+  void requestThemeMusic() {
     _isMuted = false;
     try {
-      js.context.callMethod('eval', ['window.daocAudio.toggleMute(false)']);
+      js.context.callMethod('eval', ['window.daocAudio.requestThemeMusic();']);
     } catch (e) {
-      print("Error calling startMusic in JS: $e");
+      print("Error calling requestThemeMusic in JS: $e");
     }
+  }
+
+  void playThemeMusic() {
+    requestThemeMusic();
   }
 
   void playLevelUpSound() {
@@ -57,7 +64,7 @@ class AudioController {
 
   void resumeMusic() {
     if (!_isMuted) {
-      playThemeMusic();
+      requestThemeMusic();
     }
   }
 }
