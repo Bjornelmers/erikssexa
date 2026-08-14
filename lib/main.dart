@@ -43,7 +43,7 @@ class DAoCLevelCounterApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Aragnoz - Shaman Level Counter',
+      title: 'Erikssexa',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -348,6 +348,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   AdventureState _state = AdventureState.countdown;
   bool _isAdmin = false;
   bool _isSuperAdmin = false;
+  bool _superAdminTestMode = true;
   bool _hasLoggedInBefore = false;
   bool _localCountdownBypassed = false;
   AdventureState _remoteAdventureState = AdventureState.countdown;
@@ -553,8 +554,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   @override
   void initState() {
     super.initState();
-    _loadLocalSessionState();
-    _listenToGameState();
+    _bootstrapAppState();
     _initCountdown();
     _listenToQuests();
     _listenToPotionSecrets();
@@ -562,10 +562,19 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     _listenToAdminUsers();
   }
 
+  Future<void> _bootstrapAppState() async {
+    await _loadLocalSessionState();
+    _listenToGameState();
+  }
+
   DocumentReference<Map<String, dynamic>> get _gameStateRef =>
       FirebaseFirestore.instance.collection('game_state').doc(_gameStateDocId);
 
   bool _canDriveAragnozProgress() => _isSuperAdmin;
+
+  bool get _shouldWriteGameStateToFirebase => !(_isSuperAdmin && _superAdminTestMode);
+
+  bool get _showSuperAdminTestToggle => _isSuperAdmin && _completedQuestsCount == 0;
 
   @override
   void dispose() {
@@ -865,17 +874,215 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final hasLoggedInBefore = prefs.getBool('has_logged_in_before') ?? false;
     final countdownBypassedLocally = prefs.getBool('countdown_bypassed_locally') ?? false;
     final shownVideosList = prefs.getStringList('shown_level_videos') ?? [];
+    final superAdminTestMode = isSuperAdmin ? (prefs.getBool('superadmin_test_mode') ?? true) : false;
 
     if (mounted) {
       setState(() {
         _isAdmin = isAdmin;
         _isSuperAdmin = isSuperAdmin;
+        _superAdminTestMode = superAdminTestMode;
         _currentUsername = currentUsername;
         _hasLoggedInBefore = hasLoggedInBefore || currentUsername.isNotEmpty;
         _localCountdownBypassed = countdownBypassedLocally;
         _shownLevelVideos = shownVideosList.map((e) => int.tryParse(e) ?? 0).where((e) => e > 0).toSet();
       });
     }
+
+    if (isSuperAdmin && superAdminTestMode) {
+      await _loadLocalTestGameState();
+    }
+  }
+
+  Map<String, dynamic> _currentGameStateMap({Map<String, dynamic>? partial}) {
+    final data = <String, dynamic>{
+      'level': _level,
+      'adventureState': _state == AdventureState.admin ? AdventureState.grinding.index : _state.index,
+      'completedQuestsCount': _completedQuestsCount,
+      'completedSubQuests': _completedSubQuestKeys.toList(),
+      'completedBonusQuests': _completedBonusQuestKeys.toList(),
+      'usedPotionSecrets': _usedPotionSecretKeys.toList(),
+      'gatheredFriends': _gatheredFriends,
+    };
+    if (partial != null) {
+      data.addAll(partial);
+    }
+    return data;
+  }
+
+  Future<void> _saveLocalTestGameState([Map<String, dynamic>? partial]) async {
+    final data = _currentGameStateMap(partial: partial);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('test_aragnoz_level', _parseInt(data['level'], 50));
+    await prefs.setInt('test_adventure_state', _parseInt(data['adventureState'], AdventureState.countdown.index));
+    await prefs.setInt('test_completed_quests_count', _parseInt(data['completedQuestsCount'], 0));
+    await prefs.setStringList(
+      'test_completed_subquests',
+      (data['completedSubQuests'] as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+    );
+    await prefs.setStringList(
+      'test_completed_bonus_quests',
+      (data['completedBonusQuests'] as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+    );
+    await prefs.setStringList(
+      'test_used_potion_secrets',
+      (data['usedPotionSecrets'] as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+    );
+    await prefs.setStringList(
+      'test_gathered_friends',
+      (data['gatheredFriends'] as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+    );
+    await prefs.setBool('superadmin_test_mode', true);
+  }
+
+  Future<bool> _loadLocalTestGameState() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey('test_aragnoz_level')) return false;
+
+    final level = prefs.getInt('test_aragnoz_level') ?? 50;
+    final adventureStateIndex = prefs.getInt('test_adventure_state') ?? AdventureState.countdown.index;
+    final completedQuests = prefs.getInt('test_completed_quests_count') ?? 0;
+    final subs = prefs.getStringList('test_completed_subquests') ?? <String>[];
+    final bonus = prefs.getStringList('test_completed_bonus_quests') ?? <String>[];
+    final potions = prefs.getStringList('test_used_potion_secrets') ?? <String>[];
+    final gatheredFriends = _stringListFieldToOrderedList(prefs.getStringList('test_gathered_friends'));
+
+    AdventureState localState = AdventureState.values[adventureStateIndex.clamp(0, AdventureState.grinding.index)];
+    if (localState == AdventureState.countdown && DateTime.now().isAfter(_targetDate)) {
+      localState = AdventureState.login;
+    }
+
+    if (!mounted) return false;
+    setState(() {
+      _level = level;
+      _completedQuestsCount = completedQuests;
+      _completedSubQuestKeys = subs.toSet();
+      _completedBonusQuestKeys = bonus.toSet();
+      _usedPotionSecretKeys = potions.toSet();
+      _gatheredFriends = gatheredFriends;
+      if (_state != AdventureState.admin) {
+        _state = localState;
+      }
+      _isLoading = false;
+    });
+    return true;
+  }
+
+  Future<void> _clearLocalTestGameState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('test_aragnoz_level');
+    await prefs.remove('test_adventure_state');
+    await prefs.remove('test_completed_quests_count');
+    await prefs.remove('test_completed_subquests');
+    await prefs.remove('test_completed_bonus_quests');
+    await prefs.remove('test_used_potion_secrets');
+    await prefs.remove('test_gathered_friends');
+  }
+
+  Future<void> _setSuperAdminTestMode(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('superadmin_test_mode', enabled);
+  }
+
+  Future<void> _initSuperAdminTestModeOnLogin() async {
+    _superAdminTestMode = true;
+    await _setSuperAdminTestMode(true);
+    final loaded = await _loadLocalTestGameState();
+    if (!loaded && mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _toggleSuperAdminTestMode() async {
+    if (!_isSuperAdmin || _completedQuestsCount > 0) return;
+
+    if (_superAdminTestMode) {
+      setState(() => _superAdminTestMode = false);
+      await _setSuperAdminTestMode(false);
+      await _clearLocalTestGameState();
+      try {
+        final snapshot = await _gameStateRef.get();
+        if (snapshot.exists && mounted) {
+          _applyRemoteGameState(snapshot.data()!, force: true);
+        }
+      } catch (e) {
+        debugPrint("Failed to reload prod game state: $e");
+      }
+    } else {
+      setState(() => _superAdminTestMode = true);
+      await _setSuperAdminTestMode(true);
+      await _saveLocalTestGameState();
+    }
+  }
+
+  Future<void> _logQuestEvent(Map<String, dynamic> data) async {
+    if (!_shouldWriteGameStateToFirebase) return;
+    try {
+      await FirebaseFirestore.instance.collection('quest_logs').add({
+        'timestamp': FieldValue.serverTimestamp(),
+        ...data,
+      });
+    } catch (e) {
+      debugPrint("Failed to write quest log to Firestore: $e");
+    }
+  }
+
+  Widget _buildSuperAdminTestModeToggle() {
+    if (!_showSuperAdminTestToggle) return const SizedBox.shrink();
+
+    final isTest = _superAdminTestMode;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: (isTest ? const Color(0xFF1B5E20) : const Color(0xFF4A148C)).withOpacity(0.35),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isTest ? const Color(0xFF81C784) : const Color(0xFFBA68C8),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isTest ? Icons.science_outlined : Icons.cloud_outlined,
+            color: isTest ? const Color(0xFF81C784) : const Color(0xFFE1BEE7),
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              isTest
+                  ? "TESTLÄGE\n(ändringar sparas bara lokalt på denna enhet)"
+                  : "PRODLÄGE\n(ändringar synkas till Firebase för alla enheter)",
+              style: TextStyle(
+                fontFamily: 'MedievalSharp',
+                fontSize: 10,
+                color: isTest ? const Color(0xFFA5D6A7) : const Color(0xFFE1BEE7),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: _toggleSuperAdminTestMode,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isTest ? const Color(0xFF81C784) : const Color(0xFFBA68C8),
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              isTest ? "Växla till PROD" : "Växla till TEST",
+              style: const TextStyle(
+                fontFamily: 'MedievalSharp',
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _listenToGameState() {
@@ -947,7 +1154,13 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     await prefs.setBool('countdown_bypassed_locally', value);
   }
 
-  void _applyRemoteGameState(Map<String, dynamic> rawData) {
+  void _applyRemoteGameState(Map<String, dynamic> rawData, {bool force = false}) {
+    if (!force && _isSuperAdmin && _superAdminTestMode) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+      return;
+    }
     final data = _toMapStringDynamic(rawData);
     final level = _parseInt(data['level'], 50);
     final adventureStateIndex = _parseInt(data['adventureState'] ?? data['adventure_state'], AdventureState.countdown.index);
@@ -988,19 +1201,16 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   Future<void> _writeGameStateToFirestore([Map<String, dynamic>? partial]) async {
-    final data = partial ??
-        {
-          'level': _level,
-          'adventureState': _state == AdventureState.admin ? AdventureState.grinding.index : _state.index,
-          'completedQuestsCount': _completedQuestsCount,
-          'completedSubQuests': _completedSubQuestKeys.toList(),
-          'completedBonusQuests': _completedBonusQuestKeys.toList(),
-          'usedPotionSecrets': _usedPotionSecretKeys.toList(),
-          'gatheredFriends': _gatheredFriends,
-          'updatedAt': FieldValue.serverTimestamp(),
-        };
+    final data = partial ?? _currentGameStateMap();
+    if (!_shouldWriteGameStateToFirebase) {
+      await _saveLocalTestGameState(data);
+      return;
+    }
     try {
-      await _gameStateRef.set(data, SetOptions(merge: true));
+      await _gameStateRef.set({
+        ...data,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     } catch (e) {
       debugPrint("Failed to write game_state: $e");
     }
@@ -1026,6 +1236,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   Future<void> _saveAdventureState(AdventureState state) async {
     if (state == AdventureState.admin) return;
+    if (!_shouldWriteGameStateToFirebase) {
+      await _saveLocalTestGameState({'adventureState': state.index});
+      return;
+    }
     final globalEventStarted =
         DateTime.now().isAfter(_targetDate) || _remoteAdventureState != AdventureState.countdown;
     if (!globalEventStarted) return;
@@ -1457,6 +1671,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         }
       });
       _saveAdminState(isAdminUser, isSuperAdmin: isSuperAdminUser, currentUsername: user);
+      if (isSuperAdminUser) {
+        unawaited(_initSuperAdminTestModeOnLogin());
+      }
       if (_state == AdventureState.intro) {
         _saveAdventureState(AdventureState.intro);
       }
@@ -1484,18 +1701,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         _questPasswordController.clear();
       });
 
-      // Log bypass usage to Firestore
-      try {
-        FirebaseFirestore.instance.collection('quest_logs').add({
-          'timestamp': FieldValue.serverTimestamp(),
-          'quest_title': 'Master Bypass Code Used',
-          'old_level': oldLevel,
-          'new_level': _targetLevel,
-          'password_used': _masterBypassCode,
-        });
-      } catch (e) {
-        debugPrint("Failed to write bypass log to Firestore: $e");
-      }
+      unawaited(_logQuestEvent({
+        'quest_title': 'Master Bypass Code Used',
+        'old_level': oldLevel,
+        'new_level': _targetLevel,
+        'password_used': _masterBypassCode,
+      }));
 
       _cheatToVictory();
       return;
@@ -1529,18 +1740,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
       _writeGameStateToFirestore();
 
-      // Log successful quest completion to Firestore
-      try {
-        FirebaseFirestore.instance.collection('quest_logs').add({
-          'timestamp': FieldValue.serverTimestamp(),
-          'quest_title': currentQuest.title,
-          'old_level': oldLevel,
-          'new_level': newLevel,
-          'password_used': _questPasswordController.text.trim(),
-        });
-      } catch (e) {
-        debugPrint("Failed to write quest log to Firestore: $e");
-      }
+      unawaited(_logQuestEvent({
+        'quest_title': currentQuest.title,
+        'old_level': oldLevel,
+        'new_level': newLevel,
+        'password_used': inputPassword,
+      }));
 
       _checkLevelMilestoneVideos(oldLevel, newLevel);
 
@@ -1613,18 +1818,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
       _writeGameStateToFirestore();
 
-      // Log subquest completion to Firestore
-      try {
-        FirebaseFirestore.instance.collection('quest_logs').add({
-          'timestamp': FieldValue.serverTimestamp(),
-          'quest_title': "${quest.title} - ${sub.title}",
-          'old_level': oldLevel,
-          'new_level': _level,
-          'password_used': inputPassword,
-        });
-      } catch (e) {
-        debugPrint("Failed to write subquest log to Firestore: $e");
-      }
+      unawaited(_logQuestEvent({
+        'quest_title': "${quest.title} - ${sub.title}",
+        'old_level': oldLevel,
+        'new_level': _level,
+        'password_used': inputPassword,
+      }));
 
       _checkLevelMilestoneVideos(oldLevel, _level);
 
@@ -1793,7 +1992,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     backgroundColor: const Color(0xFFE5C158),
                     foregroundColor: Colors.black,
                   ),
-                  onPressed: () {
+                  onPressed: () async {
                     final rawInput = _potionPasswordController.text.trim();
                     
                     PotionSecretInfo? matchedSecret;
@@ -1833,18 +2032,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       });
                       _writeGameStateToFirestore();
                       
-                      // Log potion drink to Firestore
-                      try {
-                        FirebaseFirestore.instance.collection('quest_logs').add({
-                          'timestamp': FieldValue.serverTimestamp(),
-                          'quest_title': 'Magic Potion Consumed (+$reward levels)',
-                          'old_level': oldLevel,
-                          'new_level': newLevel,
-                          'password_used': rawInput,
-                        });
-                      } catch (e) {
-                        debugPrint("Failed to write potion log to Firestore: $e");
-                      }
+                      await _logQuestEvent({
+                        'quest_title': 'Magic Potion Consumed (+$reward levels)',
+                        'old_level': oldLevel,
+                        'new_level': newLevel,
+                        'password_used': rawInput,
+                      });
 
                       _potionPasswordController.clear();
                       Navigator.pop(context);
@@ -2355,26 +2548,21 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     });
     _writeGameStateToFirestore();
 
-    if (admin.customStatus.trim().toUpperCase() == 'AFK') {
+    if (_shouldWriteGameStateToFirebase && admin.customStatus.trim().toUpperCase() == 'AFK') {
       final docId = admin.id.isNotEmpty ? admin.id : admin.username.replaceAll(' ', '_');
       unawaited(FirebaseFirestore.instance.collection('admin_users').doc(docId).set({
         'customStatus': '',
       }, SetOptions(merge: true)));
     }
 
-    try {
-      FirebaseFirestore.instance.collection('quest_logs').add({
-        'timestamp': FieldValue.serverTimestamp(),
-        'quest_title': willComplete
-            ? 'Bonus Quest: ${bonus.title} — ${admin.username} anslöt (+$perFriendReward) och partyt är komplett (+$completionBonus)'
-            : 'Bonus Quest: ${bonus.title} — ${admin.username} anslöt (+$perFriendReward levels)',
-        'old_level': oldLevel,
-        'new_level': newLevel,
-        'friend_added': canonicalName,
-      });
-    } catch (e) {
-      debugPrint("Failed to write gather-friends log to Firestore: $e");
-    }
+    unawaited(_logQuestEvent({
+      'quest_title': willComplete
+          ? 'Bonus Quest: ${bonus.title} — ${admin.username} anslöt (+$perFriendReward) och partyt är komplett (+$completionBonus)'
+          : 'Bonus Quest: ${bonus.title} — ${admin.username} anslöt (+$perFriendReward levels)',
+      'old_level': oldLevel,
+      'new_level': newLevel,
+      'friend_added': canonicalName,
+    }));
 
     _getBonusQuestController(bonus.id).clear();
     _checkLevelMilestoneVideos(oldLevel, newLevel);
@@ -2423,17 +2611,12 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       });
       _writeGameStateToFirestore();
 
-      try {
-        FirebaseFirestore.instance.collection('quest_logs').add({
-          'timestamp': FieldValue.serverTimestamp(),
-          'quest_title': 'Bonus Quest: ${bonus.title} (+$reward levels)',
-          'old_level': oldLevel,
-          'new_level': newLevel,
-          'password_used': rawInput,
-        });
-      } catch (e) {
-        debugPrint("Failed to write bonus quest log to Firestore: $e");
-      }
+      unawaited(_logQuestEvent({
+        'quest_title': 'Bonus Quest: ${bonus.title} (+$reward levels)',
+        'old_level': oldLevel,
+        'new_level': newLevel,
+        'password_used': rawInput,
+      }));
 
       _getBonusQuestController(bonus.id).clear();
 
@@ -2476,6 +2659,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _state = AdventureState.countdown;
       _isAdmin = false;
       _isSuperAdmin = false;
+      _superAdminTestMode = true;
       _bypassClicks = 0;
       _completedQuestsCount = 0;
       _completedSubQuestKeys.clear();
@@ -2507,6 +2691,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       'gatheredFriends': <String>[],
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    unawaited(_clearLocalTestGameState());
+    unawaited(_setSuperAdminTestMode(true));
     _setLocalCountdownBypassed(false);
     _saveShownLevelVideos();
     _saveAdminState(false, isSuperAdmin: false);
@@ -2858,6 +3044,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (_isSuperAdmin) _buildSuperAdminTestModeToggle(),
                       // Retro character intro video
                       Container(
                         height: 220,
@@ -3206,6 +3393,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (_isAdmin) ...[
+                        _buildSuperAdminTestModeToggle(),
                         Container(
                           margin: const EdgeInsets.only(bottom: 16),
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
