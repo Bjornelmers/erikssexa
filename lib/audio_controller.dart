@@ -9,11 +9,7 @@ class AudioController {
   bool get isMuted => _isMuted;
 
   void init() {
-    try {
-      js.context.callMethod('eval', ['window.daocAudio.installUnlockListener();']);
-    } catch (e) {
-      print("Error installing audio unlock listener in JS: $e");
-    }
+    // Initialized on index.html script load
   }
 
   void toggleMute() {

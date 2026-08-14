@@ -1260,20 +1260,21 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _syncThemeMusicForState(AdventureState previousState) {
-    if (_state == AdventureState.countdown || _state == AdventureState.login) {
-      AudioController.instance.requestThemeMusic();
+    if (_state == AdventureState.login) {
+      if (previousState != _state || !_audioInitialized) {
+        _audioInitialized = true;
+        AudioController.instance.requestThemeMusic();
+      }
       return;
     }
 
     if (!_audioInitialized &&
-        (_state == AdventureState.intro || _state == AdventureState.grinding)) {
+        (_state == AdventureState.countdown ||
+            _state == AdventureState.intro ||
+            _state == AdventureState.grinding)) {
       _audioInitialized = true;
       _startMusic();
     }
-  }
-
-  void _requestThemeMusicOnUserGesture() {
-    AudioController.instance.requestThemeMusic();
   }
 
   Future<void> _saveAdminState(bool isAdmin, {bool isSuperAdmin = false, String currentUsername = ""}) async {
@@ -1684,7 +1685,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   // Countdown bypass: local only — does not change Firestore for other devices
   void _handleBypassClick() {
-    _requestThemeMusicOnUserGesture();
     if (_state != AdventureState.countdown || !_hasLoggedInBefore) return;
     final newClicks = _bypassClicks + 1;
     final previousState = _state;
@@ -2817,6 +2817,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
               ],
             ),
           ),
+          Positioned(
+            top: 10,
+            right: 10,
+            child: SafeArea(child: _buildAudioButton()),
+          ),
         ],
       ),
     );
@@ -2983,7 +2988,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           // Golden sword-hilt styled action button
                           ElevatedButton(
                             onPressed: () {
-                              _requestThemeMusicOnUserGesture();
+                              AudioController.instance.requestThemeMusic();
+                              _audioInitialized = true;
                               _verifyLogin();
                             },
                             style: ElevatedButton.styleFrom(

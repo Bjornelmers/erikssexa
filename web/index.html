@@ -51,21 +51,6 @@
       isMusicPlaying: false,
       unlockInstalled: false,
 
-      installUnlockListener: function() {
-        if (this.unlockInstalled) return;
-        this.unlockInstalled = true;
-        var self = this;
-        var handler = function() {
-          if (!self.wantsThemeMusic || self.isMuted) return;
-          if (!self.needsUserGesture || self.isMusicActuallyPlaying()) return;
-          self.ensureCtx();
-          self.startMusic();
-        };
-        ['pointerdown', 'touchstart', 'keydown'].forEach(function(evt) {
-          document.addEventListener(evt, handler, { passive: true });
-        });
-      },
-
       isMusicActuallyPlaying: function() {
         if (this.customMusic && !this.customMusic.paused && !this.customMusic.ended) {
           return true;
@@ -79,7 +64,6 @@
       requestThemeMusic: function() {
         this.wantsThemeMusic = true;
         this.isMuted = false;
-        this.installUnlockListener();
         if (this.isMusicActuallyPlaying()) {
           this.markMusicPlaying();
           return;
@@ -434,7 +418,6 @@
         this.musicOscs = [];
       }
     };
-    window.daocAudio.installUnlockListener();
   </script>
 </head>
 <body>
