@@ -1378,6 +1378,43 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
+  Widget _buildLevelVideoReplayListItem({
+    required String label,
+    required String assetPath,
+    required String modalTitle,
+    bool isLandscape = false,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showLevelVideoModal(assetPath, modalTitle, isLandscape: isLandscape),
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+          child: Row(
+            children: [
+              const Icon(Icons.play_circle_fill, color: Color(0xFFFFD700), size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFFFD700),
+                    fontFamily: 'MedievalSharp',
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.movie_outlined, size: 16, color: Color(0xFFD4AF37)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // Countdown bypass: local only — does not change Firestore for other devices
   void _handleBypassClick() {
     if (_state != AdventureState.countdown || !_hasLoggedInBefore) return;
@@ -3830,71 +3867,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
                       // COMPLETED QUESTS LOG
                       if (_completedQuestsCount > 0 && _quests.isNotEmpty) ...[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              "COMPLETED QUESTS (Klicka för info/video)",
-                              style: TextStyle(color: Color(0xFF8B7355), fontSize: 11, fontWeight: FontWeight.bold),
-                            ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_shownLevelVideos.contains(200) && _level >= 200) ...[
-                                  TextButton.icon(
-                                    onPressed: () {
-                                      _showLevelVideoModal('assets/videos/ding200.mov', 'LEVEL 200 - REPLAY', isLandscape: true);
-                                    },
-                                    icon: const Icon(Icons.play_circle_fill, size: 16, color: Color(0xFFFFD700)),
-                                    label: const Text(
-                                      "Level 200 film 🎬",
-                                      style: TextStyle(fontSize: 11, color: Color(0xFFFFD700), fontFamily: 'MedievalSharp'),
-                                    ),
-                                    style: TextButton.styleFrom(
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                if (_shownLevelVideos.contains(500) && _level >= 500) ...[
-                                  TextButton.icon(
-                                    onPressed: () {
-                                      _showLevelVideoModal('assets/videos/ding500.mp4', 'LEVEL 500 - REPLAY');
-                                    },
-                                    icon: const Icon(Icons.play_circle_fill, size: 16, color: Color(0xFFFFD700)),
-                                    label: const Text(
-                                      "Level 500 film 🎬",
-                                      style: TextStyle(fontSize: 11, color: Color(0xFFFFD700), fontFamily: 'MedievalSharp'),
-                                    ),
-                                    style: TextButton.styleFrom(
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                if (_shownLevelVideos.contains(1000) && _level >= 1000)
-                                  TextButton.icon(
-                                    onPressed: () {
-                                      _showLevelVideoModal('assets/videos/ding1000.MOV', 'LEVEL 1000 - REPLAY');
-                                    },
-                                    icon: const Icon(Icons.play_circle_fill, size: 16, color: Color(0xFFFFD700)),
-                                    label: const Text(
-                                      "Level 1000 film 🎬",
-                                      style: TextStyle(fontSize: 11, color: Color(0xFFFFD700), fontFamily: 'MedievalSharp'),
-                                    ),
-                                    style: TextButton.styleFrom(
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
+                        const Text(
+                          "COMPLETED QUESTS (Klicka för info/video)",
+                          style: TextStyle(color: Color(0xFF8B7355), fontSize: 11, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
                         Container(
@@ -3910,6 +3885,25 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                if (_shownLevelVideos.contains(200) && _level >= 200)
+                                  _buildLevelVideoReplayListItem(
+                                    label: 'Level 200 film 🎬',
+                                    assetPath: 'assets/videos/ding200.mov',
+                                    modalTitle: 'LEVEL 200 - REPLAY',
+                                    isLandscape: true,
+                                  ),
+                                if (_shownLevelVideos.contains(500) && _level >= 500)
+                                  _buildLevelVideoReplayListItem(
+                                    label: 'Level 500 film 🎬',
+                                    assetPath: 'assets/videos/ding500.mp4',
+                                    modalTitle: 'LEVEL 500 - REPLAY',
+                                  ),
+                                if (_shownLevelVideos.contains(1000) && _level >= 1000)
+                                  _buildLevelVideoReplayListItem(
+                                    label: 'Level 1000 film 🎬',
+                                    assetPath: 'assets/videos/ding1000.MOV',
+                                    modalTitle: 'LEVEL 1000 - REPLAY',
+                                  ),
                                 for (int index = 0; index < _completedQuestsCount.clamp(0, _quests.length); index++)
                                   Builder(
                                     builder: (context) {
