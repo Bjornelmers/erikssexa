@@ -856,8 +856,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
               _saveAdventureState(AdventureState.login);
             }
             if (_state == AdventureState.countdown) {
+              final previousState = _state;
               _state = AdventureState.login;
-              _startMusic();
+              _syncThemeMusicForState(previousState);
             }
           } else {
             _timeRemaining = diff;
@@ -954,6 +955,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     }
 
     if (!mounted) return false;
+    final previousState = _state;
     setState(() {
       _level = level;
       _completedQuestsCount = completedQuests;
@@ -966,6 +968,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       }
       _isLoading = false;
     });
+    _syncThemeMusicForState(previousState);
     return true;
   }
 
@@ -1166,6 +1169,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   Future<void> _logout() async {
     await _saveAdminState(false, isSuperAdmin: false, currentUsername: "");
     if (!mounted) return;
+    final previousState = _state;
     setState(() {
       _currentUsername = "";
       _isAdmin = false;
@@ -1179,6 +1183,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         _state = AdventureState.login;
       }
     });
+    _syncThemeMusicForState(previousState);
   }
 
   Future<void> _setLocalCountdownBypassed(bool value) async {
@@ -1213,6 +1218,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       unawaited(_setLocalCountdownBypassed(false));
     }
 
+    final previousState = _state;
     setState(() {
       _remoteAdventureState = remoteState;
       _level = level;
@@ -1227,14 +1233,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _isLoading = false;
     });
 
-    if (!_audioInitialized &&
-        (_state == AdventureState.countdown ||
-            _state == AdventureState.login ||
-            _state == AdventureState.intro ||
-            _state == AdventureState.grinding)) {
-      _audioInitialized = true;
-      _startMusic();
-    }
+    _syncThemeMusicForState(previousState);
   }
 
   Future<void> _writeGameStateToFirestore([Map<String, dynamic>? partial]) async {
@@ -1257,6 +1256,24 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     // Attempt play
     if (!AudioController.instance.isMuted) {
       AudioController.instance.playThemeMusic();
+    }
+  }
+
+  void _syncThemeMusicForState(AdventureState previousState) {
+    if (_state == AdventureState.login) {
+      if (previousState != AdventureState.login) {
+        _audioInitialized = true;
+        AudioController.instance.playThemeMusic();
+      }
+      return;
+    }
+
+    if (!_audioInitialized &&
+        (_state == AdventureState.countdown ||
+            _state == AdventureState.intro ||
+            _state == AdventureState.grinding)) {
+      _audioInitialized = true;
+      _startMusic();
     }
   }
 
@@ -1670,17 +1687,17 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   void _handleBypassClick() {
     if (_state != AdventureState.countdown || !_hasLoggedInBefore) return;
     final newClicks = _bypassClicks + 1;
+    final previousState = _state;
     setState(() {
       _bypassClicks = newClicks;
       if (newClicks >= 5) {
         _localCountdownBypassed = true;
         _state = AdventureState.login;
         // Keep timer running so this device can still publish global login at target time
-        AudioController.instance.playThemeMusic();
-        _audioInitialized = true;
       }
     });
     if (newClicks >= 5) {
+      _syncThemeMusicForState(previousState);
       unawaited(_setLocalCountdownBypassed(true));
     }
   }
@@ -2971,9 +2988,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           // Golden sword-hilt styled action button
                           ElevatedButton(
                             onPressed: () {
-                              _verifyLogin();
-                              // Ensure music attempts playing on button click
+                              AudioController.instance.playThemeMusic();
                               _audioInitialized = true;
+                              _verifyLogin();
                             },
                             style: ElevatedButton.styleFrom(
                               padding: EdgeInsets.zero,
@@ -3025,11 +3042,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                 ),
               ),
             ),
-          ),
-          Positioned(
-            top: 10,
-            right: 10,
-            child: SafeArea(child: _buildAudioButton()),
           ),
         ],
       ),
@@ -3164,8 +3176,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                    const SizedBox(height: 24),
+                    _buildLoggedInBanner(),
+                  ],
+                ),
             ),
           ),
           Positioned(
@@ -4190,6 +4204,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                           ),
                         ),
                       ],
+                      const SizedBox(height: 24),
+                      _buildLoggedInBanner(),
                     ],
               ),
             ),
@@ -4336,67 +4352,49 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
-  Widget _buildLoggedInBanner({bool inCard = false}) {
+  Widget _buildLoggedInBanner() {
     if (_currentUsername.isEmpty) return const SizedBox.shrink();
 
-    final content = Row(
-      children: [
-        const Icon(Icons.person, size: 14, color: Color(0xFFE5C158)),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            "Inloggad som $_displayUsername",
-            style: const TextStyle(
-              fontFamily: 'MedievalSharp',
-              fontSize: 11,
-              color: Color(0xFFE5C158),
-              fontWeight: FontWeight.bold,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E2125).withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.person, size: 14, color: Color(0xFFE5C158)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              "Inloggad som $_displayUsername",
+              style: const TextStyle(
+                fontFamily: 'MedievalSharp',
+                fontSize: 11,
+                color: Color(0xFFE5C158),
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-        ),
-        TextButton(
-          onPressed: _logout,
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: const Text(
-            "Logga ut",
-            style: TextStyle(
-              fontFamily: 'MedievalSharp',
-              fontSize: 10,
-              color: Color(0xFFFF8A80),
-              decoration: TextDecoration.underline,
+          TextButton(
+            onPressed: _logout,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              "Logga ut",
+              style: TextStyle(
+                fontFamily: 'MedievalSharp',
+                fontSize: 10,
+                color: Color(0xFFFF8A80),
+                decoration: TextDecoration.underline,
+              ),
             ),
           ),
-        ),
-      ],
-    );
-
-    if (inCard) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.92),
-          border: Border(
-            bottom: BorderSide(color: const Color(0xFF8B7355).withOpacity(0.8)),
-          ),
-        ),
-        child: content,
-      );
-    }
-
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.72),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
-        ),
-        child: content,
+        ],
       ),
     );
   }
@@ -4425,17 +4423,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
             boxShadow: boxShadow,
           ),
           clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_currentUsername.isNotEmpty) _buildLoggedInBanner(inCard: true),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: child,
-                ),
-              ),
-            ],
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: child,
           ),
         ),
       ),
@@ -5896,13 +5886,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         body: SafeArea(
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: _buildLoggedInBanner(),
-                ),
-              ),
               // Max Level Summary Card at top of Admin View
               Container(
                 margin: const EdgeInsets.fromLTRB(8, 6, 8, 4),
@@ -6436,6 +6419,10 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                     _buildSuperAdminUsersTab(),
                   ],
                 ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                child: _buildLoggedInBanner(),
               ),
             ],
           ),
