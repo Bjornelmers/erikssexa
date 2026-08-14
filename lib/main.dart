@@ -1227,7 +1227,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       _isLoading = false;
     });
 
-    if (!_audioInitialized && (_state == AdventureState.login || _state == AdventureState.grinding)) {
+    if (!_audioInitialized &&
+        (_state == AdventureState.countdown ||
+            _state == AdventureState.login ||
+            _state == AdventureState.intro ||
+            _state == AdventureState.grinding)) {
       _audioInitialized = true;
       _startMusic();
     }
@@ -2796,6 +2800,11 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
               ],
             ),
           ),
+          Positioned(
+            top: 10,
+            right: 10,
+            child: SafeArea(child: _buildAudioButton()),
+          ),
         ],
       ),
     );
@@ -3062,22 +3071,16 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
       backgroundColor: const Color(0xFF0F1115),
       body: Stack(
         children: [
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 550),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.85),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFD4AF37), width: 2),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_isSuperAdmin) _buildSuperAdminTestModeToggle(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            child: _buildAdventureCard(
+              maxWidth: 550,
+              borderRadius: BorderRadius.circular(12),
+              borderWidth: 2,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_isSuperAdmin) _buildSuperAdminTestModeToggle(),
                       // Retro character intro video
                       Container(
                         height: 220,
@@ -3163,14 +3166,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                       ),
                     ],
                   ),
-                ),
-              ),
             ),
-          ),
-          Positioned(
-            top: 10,
-            left: 10,
-            child: SafeArea(child: _buildLoggedInBanner()),
           ),
           Positioned(
             top: 10,
@@ -3411,26 +3407,20 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
 
           // Main centered content
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 580),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.85),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFD4AF37), width: 2.5),
-                  boxShadow: [
-                    BoxShadow(color: const Color(0xFFD4AF37).withOpacity(0.12), blurRadius: 20, spreadRadius: 4),
-                    const BoxShadow(color: Colors.black54, offset: Offset(0, 8), blurRadius: 16),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_isAdmin) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            child: _buildAdventureCard(
+              maxWidth: 580,
+              borderRadius: BorderRadius.circular(16),
+              borderWidth: 2.5,
+              boxShadow: [
+                BoxShadow(color: const Color(0xFFD4AF37).withOpacity(0.12), blurRadius: 20, spreadRadius: 4),
+                const BoxShadow(color: Colors.black54, offset: Offset(0, 8), blurRadius: 16),
+              ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_isAdmin) ...[
                         _buildSuperAdminTestModeToggle(),
                         Container(
                           margin: const EdgeInsets.only(bottom: 16),
@@ -4201,8 +4191,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                         ),
                       ],
                     ],
-                  ),
-                ),
               ),
             ),
           ),
@@ -4340,11 +4328,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           ],
           Positioned(
             top: 10,
-            left: 10,
-            child: SafeArea(child: _buildLoggedInBanner()),
-          ),
-          Positioned(
-            top: 10,
             right: 10,
             child: SafeArea(child: _buildAudioButton()),
           ),
@@ -4353,8 +4336,56 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     );
   }
 
-  Widget _buildLoggedInBanner() {
+  Widget _buildLoggedInBanner({bool inCard = false}) {
     if (_currentUsername.isEmpty) return const SizedBox.shrink();
+
+    final content = Row(
+      children: [
+        const Icon(Icons.person, size: 14, color: Color(0xFFE5C158)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            "Inloggad som $_displayUsername",
+            style: const TextStyle(
+              fontFamily: 'MedievalSharp',
+              fontSize: 11,
+              color: Color(0xFFE5C158),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: _logout,
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Text(
+            "Logga ut",
+            style: TextStyle(
+              fontFamily: 'MedievalSharp',
+              fontSize: 10,
+              color: Color(0xFFFF8A80),
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (inCard) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.92),
+          border: Border(
+            bottom: BorderSide(color: const Color(0xFF8B7355).withOpacity(0.8)),
+          ),
+        ),
+        child: content,
+      );
+    }
 
     return Material(
       color: Colors.transparent,
@@ -4365,39 +4396,47 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: const Color(0xFF8B7355), width: 1.2),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.person, size: 14, color: Color(0xFFE5C158)),
-            const SizedBox(width: 6),
-            Text(
-              "Inloggad som $_displayUsername",
-              style: const TextStyle(
-                fontFamily: 'MedievalSharp',
-                fontSize: 11,
-                color: Color(0xFFE5C158),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(width: 8),
-            TextButton(
-              onPressed: _logout,
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text(
-                "Logga ut",
-                style: TextStyle(
-                  fontFamily: 'MedievalSharp',
-                  fontSize: 10,
-                  color: Color(0xFFFF8A80),
-                  decoration: TextDecoration.underline,
+        child: content,
+      ),
+    );
+  }
+
+  Widget _buildAdventureCard({
+    required double maxWidth,
+    required BorderRadius borderRadius,
+    required double borderWidth,
+    List<BoxShadow>? boxShadow,
+    required Widget child,
+  }) {
+    final verticalPadding = MediaQuery.paddingOf(context).vertical;
+    final maxHeight = MediaQuery.sizeOf(context).height - verticalPadding - 48;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: maxWidth,
+          maxHeight: maxHeight,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.85),
+            borderRadius: borderRadius,
+            border: Border.all(color: const Color(0xFFD4AF37), width: borderWidth),
+            boxShadow: boxShadow,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_currentUsername.isNotEmpty) _buildLoggedInBanner(inCard: true),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: child,
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
