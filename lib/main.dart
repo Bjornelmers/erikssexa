@@ -1046,6 +1046,15 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
 
   void _checkLevelMilestoneVideos(int oldLevel, int newLevel) {
     bool saveNeeded = false;
+    if (oldLevel < 200 && newLevel >= 200 && !_shownLevelVideos.contains(200)) {
+      _shownLevelVideos.add(200);
+      saveNeeded = true;
+      if (newLevel < 500) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showLevelVideoModal('assets/videos/ding200.mov', 'LEVEL 200 PASSERAD!', isLandscape: true);
+        });
+      }
+    }
     if (oldLevel < 500 && newLevel >= 500 && !_shownLevelVideos.contains(500)) {
       _shownLevelVideos.add(500);
       saveNeeded = true;
@@ -1067,7 +1076,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     }
   }
 
-  void _showLevelVideoModal(String videoPath, String title) {
+  void _showLevelVideoModal(String videoPath, String title, {bool isLandscape = false}) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1075,6 +1084,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         return _LevelVideoDialog(
           videoPath: videoPath,
           title: title,
+          isLandscape: isLandscape,
           onClose: () {},
         );
       },
@@ -1292,13 +1302,32 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                   ),
                 ),
               ],
-              if ((_shownLevelVideos.contains(500) && _level >= 500) || (_shownLevelVideos.contains(1000) && _level >= 1000)) ...[
+              if ((_shownLevelVideos.contains(200) && _level >= 200) ||
+                  (_shownLevelVideos.contains(500) && _level >= 500) ||
+                  (_shownLevelVideos.contains(1000) && _level >= 1000)) ...[
                 const SizedBox(height: 16),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
                   alignment: WrapAlignment.center,
                   children: [
+                    if (_shownLevelVideos.contains(200) && _level >= 200)
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFFD700),
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _showLevelVideoModal('assets/videos/ding200.mov', 'LEVEL 200 - REPLAY', isLandscape: true);
+                        },
+                        icon: const Icon(Icons.play_circle_fill, size: 18),
+                        label: const Text(
+                          "Spela Level 200 Film 🎬",
+                          style: TextStyle(fontFamily: 'MedievalSharp', fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
                     if (_shownLevelVideos.contains(500) && _level >= 500)
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
@@ -2253,7 +2282,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     final admin = _findAdminByUsername(cleanInput);
     if (admin == null) {
       setDialogState(() {
-        setDialogError("Okänt namn! Endast betrodda vänner kan ansluta till partyt.");
+        setDialogError("Vem faen är det? Endast geeks i partyt tack!");
       });
       return;
     }
@@ -3811,6 +3840,24 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                if (_shownLevelVideos.contains(200) && _level >= 200) ...[
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      _showLevelVideoModal('assets/videos/ding200.mov', 'LEVEL 200 - REPLAY', isLandscape: true);
+                                    },
+                                    icon: const Icon(Icons.play_circle_fill, size: 16, color: Color(0xFFFFD700)),
+                                    label: const Text(
+                                      "Level 200 film 🎬",
+                                      style: TextStyle(fontSize: 11, color: Color(0xFFFFD700), fontFamily: 'MedievalSharp'),
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
                                 if (_shownLevelVideos.contains(500) && _level >= 500) ...[
                                   TextButton.icon(
                                     onPressed: () {
@@ -6469,11 +6516,13 @@ class _AragnozHeroCardState extends State<AragnozHeroCard> {
 class _LevelVideoDialog extends StatefulWidget {
   final String videoPath;
   final String title;
+  final bool isLandscape;
   final VoidCallback onClose;
 
   const _LevelVideoDialog({
     required this.videoPath,
     required this.title,
+    this.isLandscape = false,
     required this.onClose,
   });
 
@@ -6518,15 +6567,24 @@ class _LevelVideoDialogState extends State<_LevelVideoDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final bool landscapeLayout = widget.isLandscape ||
+        (_isInitialized && _controller.value.aspectRatio > 1.0);
+
     return Dialog(
       backgroundColor: const Color(0xFF0F1115),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: landscapeLayout ? 12 : 16,
+        vertical: landscapeLayout ? 16 : 24,
+      ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: const BorderSide(color: Color(0xFFD4AF37), width: 2),
       ),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 700, maxHeight: 580),
+        constraints: BoxConstraints(
+          maxWidth: landscapeLayout ? 960 : 700,
+          maxHeight: landscapeLayout ? 520 : 580,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -6563,9 +6621,10 @@ class _LevelVideoDialogState extends State<_LevelVideoDialog> {
               ),
             ),
             // Video area
-            Expanded(
+            Flexible(
               child: ClipRRect(
                 child: Container(
+                  width: double.infinity,
                   color: Colors.black,
                   alignment: Alignment.center,
                   child: _hasError
@@ -6577,13 +6636,19 @@ class _LevelVideoDialogState extends State<_LevelVideoDialog> {
                           ),
                         )
                       : !_isInitialized
-                          ? const Center(
+                          ? const Padding(
+                              padding: EdgeInsets.all(40),
                               child: CircularProgressIndicator(color: Color(0xFFD4AF37)),
                             )
-                          : AspectRatio(
-                              aspectRatio: _controller.value.aspectRatio > 0 ? _controller.value.aspectRatio : 16 / 9,
-                              child: VideoPlayer(_controller),
-                            ),
+                          : landscapeLayout
+                              ? AspectRatio(
+                                  aspectRatio: _controller.value.aspectRatio > 0 ? _controller.value.aspectRatio : 16 / 9,
+                                  child: VideoPlayer(_controller),
+                                )
+                              : AspectRatio(
+                                  aspectRatio: _controller.value.aspectRatio > 0 ? _controller.value.aspectRatio : 9 / 16,
+                                  child: VideoPlayer(_controller),
+                                ),
                 ),
               ),
             ),
