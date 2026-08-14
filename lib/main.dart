@@ -1260,8 +1260,8 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   }
 
   void _syncThemeMusicForState(AdventureState previousState) {
-    if (_state == AdventureState.login) {
-      if (previousState != AdventureState.login) {
+    if (_state == AdventureState.countdown || _state == AdventureState.login) {
+      if (previousState != _state || !_audioInitialized) {
         _audioInitialized = true;
         AudioController.instance.playThemeMusic();
       }
@@ -1269,9 +1269,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     }
 
     if (!_audioInitialized &&
-        (_state == AdventureState.countdown ||
-            _state == AdventureState.intro ||
-            _state == AdventureState.grinding)) {
+        (_state == AdventureState.intro || _state == AdventureState.grinding)) {
       _audioInitialized = true;
       _startMusic();
     }
@@ -2816,11 +2814,6 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
                 ),
               ],
             ),
-          ),
-          Positioned(
-            top: 10,
-            right: 10,
-            child: SafeArea(child: _buildAudioButton()),
           ),
         ],
       ),
