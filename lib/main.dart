@@ -570,7 +570,9 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   DocumentReference<Map<String, dynamic>> get _gameStateRef =>
       FirebaseFirestore.instance.collection('game_state').doc(_gameStateDocId);
 
-  bool _canDriveAragnozProgress() => _isSuperAdmin;
+  bool get _isAragnozUser => _currentUsername == 'aragnoz';
+
+  bool _canDriveAragnozProgress() => _isSuperAdmin || _isAragnozUser;
 
   bool get _shouldWriteGameStateToFirebase => !(_isSuperAdmin && _superAdminTestMode);
 
@@ -1686,7 +1688,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     }
   }
 
-  // Quest Verification (superadmin only)
+  // Quest Verification (Aragnoz or superadmin)
   void _submitQuestPassword() {
     if (!_canDriveAragnozProgress()) return;
 
@@ -1694,7 +1696,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
     if (inputPassword.isEmpty) return;
 
     // Special master bypass password to reach victory instantly (superadmin only)
-    if (inputPassword == _masterBypassCode) {
+    if (_isSuperAdmin && inputPassword == _masterBypassCode) {
       final oldLevel = _level;
       setState(() {
         _questError = "";
