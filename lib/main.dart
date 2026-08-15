@@ -607,84 +607,19 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   void _listenToQuests() {
     final questsRef = FirebaseFirestore.instance.collection('quests');
     
-    _questsSubscription = questsRef.orderBy('order').snapshots().listen((snapshot) async {
-      if (snapshot.docs.isEmpty) {
-        // Seed default quests into Firestore if empty
-        debugPrint("Firestore 'quests' collection is empty. Seeding default quests...");
-        final batch = FirebaseFirestore.instance.batch();
-        for (final q in _defaultQuests) {
-          final docRef = questsRef.doc(q.id);
-          batch.set(docRef, q.toMap());
-        }
-        await batch.commit().catchError((e) {
-          debugPrint("Failed to seed default quests: $e");
-        });
-        return;
-      }
-
-      // Check if any existing documents in Firestore still use 'hint', missing 'description', or missing subquests for quest_3
-      bool needsMigration = false;
-      final batch = FirebaseFirestore.instance.batch();
-
-      for (final doc in snapshot.docs) {
-        final data = _toMapStringDynamic(doc.data());
-        final subq = data['subquests'];
-        
-        if (doc.id == 'quest_3' && (subq == null || subq is! List || subq.isEmpty)) {
-          needsMigration = true;
-          final quest3Default = _defaultQuests.firstWhere((q) => q.id == 'quest_3');
-          batch.update(doc.reference, quest3Default.toMap());
-        } else if (data.containsKey('hint') || !data.containsKey('description')) {
-          needsMigration = true;
-          
-          String defaultDesc = "";
-          for (final dq in _defaultQuests) {
-            if (dq.id == doc.id) {
-              defaultDesc = dq.description;
-              break;
-            }
-          }
-          if (defaultDesc.isEmpty) {
-            defaultDesc = data['hint']?.toString() ?? '';
-          }
-
-          batch.update(doc.reference, {
-            'description': data['description']?.toString() ?? defaultDesc,
-            'hint': FieldValue.delete(),
-          });
-        }
-      }
-
-      // Check for missing default quests (e.g. quest_6, quest_7, quest_8) and create them automatically
-      final existingIds = snapshot.docs.map((doc) => doc.id).toSet();
-
-      for (final dq in _defaultQuests) {
-        if (!existingIds.contains(dq.id)) {
-          needsMigration = true;
-          final docRef = questsRef.doc(dq.id);
-          batch.set(docRef, dq.toMap());
-        }
-      }
-
-      if (needsMigration) {
-        debugPrint("Updating/Seeding Firestore quest documents...");
-        await batch.commit().catchError((e) {
-          debugPrint("Failed to update quest documents: $e");
-        });
-      }
-      
+    _questsSubscription = questsRef.orderBy('order').snapshots().listen((snapshot) {
       final loadedQuests = snapshot.docs
           .map((doc) => QuestInfo.fromFirestore(doc))
           .toList();
       loadedQuests.sort((a, b) => a.order.compareTo(b.order));
           
-      if (mounted && loadedQuests.isNotEmpty) {
+      if (mounted) {
         setState(() {
           _quests = loadedQuests;
         });
       }
     }, onError: (error) {
-      debugPrint("Error listening to Firestore quests, using defaults: $error");
+      debugPrint("Error listening to Firestore quests: $error");
     });
   }
 
@@ -692,32 +627,19 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   void _listenToPotionSecrets() {
     final secretsRef = FirebaseFirestore.instance.collection('potion_secrets');
 
-    _potionSecretsSubscription = secretsRef.snapshots().listen((snapshot) async {
-      if (snapshot.docs.isEmpty) {
-        debugPrint("Firestore 'potion_secrets' collection is empty. Seeding defaults...");
-        final batch = FirebaseFirestore.instance.batch();
-        for (final s in _defaultPotionSecrets) {
-          final docRef = secretsRef.doc(s.id);
-          batch.set(docRef, s.toMap());
-        }
-        await batch.commit().catchError((e) {
-          debugPrint("Failed to seed default potion secrets: $e");
-        });
-        return;
-      }
-
+    _potionSecretsSubscription = secretsRef.snapshots().listen((snapshot) {
       final loadedSecrets = snapshot.docs
           .map((doc) => PotionSecretInfo.fromFirestore(doc))
           .where((s) => s.secret.isNotEmpty)
           .toList();
 
-      if (mounted && loadedSecrets.isNotEmpty) {
+      if (mounted) {
         setState(() {
           _potionSecrets = loadedSecrets;
         });
       }
     }, onError: (error) {
-      debugPrint("Error listening to Firestore potion secrets, using defaults: $error");
+      debugPrint("Error listening to Firestore potion secrets: $error");
     });
   }
 
@@ -725,51 +647,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   void _listenToBonusQuests() {
     final bonusRef = FirebaseFirestore.instance.collection('bonus_quests');
 
-    _bonusQuestsSubscription = bonusRef.snapshots().listen((snapshot) async {
-      if (snapshot.docs.isEmpty) {
-        debugPrint("Firestore 'bonus_quests' collection is empty. Seeding default bonus quests...");
-        final batch = FirebaseFirestore.instance.batch();
-        for (final b in _defaultBonusQuests) {
-          final docRef = bonusRef.doc(b.id);
-          batch.set(docRef, b.toMap());
-        }
-        await batch.commit().catchError((e) {
-          debugPrint("Failed to seed default bonus quests: $e");
-        });
-        return;
-      }
-
-      bool needsMigration = false;
-      final batch = FirebaseFirestore.instance.batch();
-      final existingIds = snapshot.docs.map((doc) => doc.id).toSet();
-
-      for (final dq in _defaultBonusQuests) {
-        if (!existingIds.contains(dq.id)) {
-          needsMigration = true;
-          batch.set(bonusRef.doc(dq.id), dq.toMap());
-        }
-      }
-
-      for (final doc in snapshot.docs) {
-        if (doc.id == _gatherFriendsQuestId) {
-          final data = _toMapStringDynamic(doc.data());
-          if (data['type'] != BonusQuestInfo.typeGatherFriends) {
-            needsMigration = true;
-            batch.set(doc.reference, {
-              'type': BonusQuestInfo.typeGatherFriends,
-              'completionBonusLevels': _parseInt(data['completionBonusLevels'] ?? data['completion_bonus_levels'], 100),
-            }, SetOptions(merge: true));
-          }
-        }
-      }
-
-      if (needsMigration) {
-        debugPrint("Updating/Seeding Firestore bonus quest documents...");
-        await batch.commit().catchError((e) {
-          debugPrint("Failed to update bonus quest documents: $e");
-        });
-      }
-
+    _bonusQuestsSubscription = bonusRef.snapshots().listen((snapshot) {
       final loadedBonus = snapshot.docs
           .map((doc) => BonusQuestInfo.fromFirestore(doc))
           .toList();
@@ -778,13 +656,13 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
         loadedBonus.insert(0, _defaultGatherFriendsQuest);
       }
 
-      if (mounted && loadedBonus.isNotEmpty) {
+      if (mounted) {
         setState(() {
           _bonusQuests = loadedBonus;
         });
       }
     }, onError: (error) {
-      debugPrint("Error listening to Firestore bonus quests, using defaults: $error");
+      debugPrint("Error listening to Firestore bonus quests: $error");
     });
   }
 
@@ -792,25 +670,7 @@ class _MainAdventureManagerState extends State<MainAdventureManager> {
   void _listenToAdminUsers() {
     final adminRef = FirebaseFirestore.instance.collection('admin_users');
 
-    _adminUsersSubscription = adminRef.snapshots().listen((snapshot) async {
-      if (snapshot.docs.isEmpty) {
-        debugPrint("Firestore 'admin_users' collection is empty. Seeding defaults...");
-        try {
-          final batch = FirebaseFirestore.instance.batch();
-          final defaultAdmins = [
-            AdminUserInfo(id: 'hetelmers_hot', username: 'hetelmers hot', role: 'superadmin', unlockedByQuestOrder: 999),
-            AdminUserInfo(id: 'spellhound', username: 'spellhound', role: 'admin', unlockedByQuestOrder: 999),
-          ];
-          for (final a in defaultAdmins) {
-            batch.set(adminRef.doc(a.id), a.toMap());
-          }
-          await batch.commit();
-        } catch (e) {
-          debugPrint("Failed to seed default admin users: $e");
-        }
-        return;
-      }
-
+    _adminUsersSubscription = adminRef.snapshots().listen((snapshot) {
       final loadedAdmins = snapshot.docs
           .map((doc) => AdminUserInfo.fromFirestore(doc))
           .toList();
